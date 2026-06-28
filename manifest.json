@@ -1,0 +1,14 @@
+{
+  "name": "HSSE e-PTW",
+  "short_name": "e-PTW",
+  "description": "Field-first permit-to-work app (open-source DIY build)",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#EAEFF4",
+  "theme_color": "#16263A",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
