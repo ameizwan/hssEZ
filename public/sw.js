@@ -1,6 +1,6 @@
 /* HSSE e-PTW service worker — offline app shell.
    Bump CACHE when you change files so phones pick up the new version. */
-const CACHE = 'hsse-eptw-v1';
+const CACHE = 'hsse-eptw-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -22,6 +22,7 @@ self.addEventListener('activate', e => {
 /* cache-first for app shell, network fallback (so it works fully offline) */
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  if (new URL(e.request.url).pathname.startsWith('/api/')) return; /* never cache API/sync calls */
   e.respondWith(
     caches.match(e.request).then(hit =>
       hit || fetch(e.request).then(res => {

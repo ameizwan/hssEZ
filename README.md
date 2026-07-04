@@ -30,19 +30,22 @@ You now have an app icon that opens full-screen, works offline, and saves permit
 
 | File | Purpose |
 |------|---------|
-| `index.html` | The whole app — UI + logic (≈1 file you can read top to bottom) |
-| `sw.js` | Service worker → offline caching (the "works with no signal" part) |
-| `manifest.json` | Makes it installable to the home screen |
-| `icon-192/512.png` | App icons |
+| `public/index.html` | The whole app — UI + logic (≈1 file you can read top to bottom) |
+| `public/sw.js` | Service worker → offline caching (the "works with no signal" part) |
+| `public/manifest.json` | Makes it installable to the home screen |
+| `public/icon-192/512.png` | App icons |
+| `src/index.js` | Cloudflare Worker — serves `public/` and the `/api/*` sync endpoints |
+| `migrations/0001_init.sql` | D1 schema for the sync backend |
+| `wrangler.jsonc` | Worker + D1 + static-assets config |
 
-Data lives in the browser under `localStorage` key `hsse_permits_v1`. A demo permit is seeded on first launch.
+Data lives in the browser under `localStorage` (permits: `hsse_permits_v3`, unsafe reports: `hsse_obs_v1`), and is synced to a Cloudflare D1 database when online — see [§4](#4-go-multi-user--still-100-open-source). A demo permit is seeded on first launch.
 
 ---
 
 ## Safety controls (built in)
 
 - **Revoke a permit (HSSE / Area Authority).** Open a permit, tap **Revoke permit (HSSE)**, and enter a mandatory reason. Status becomes `Revoked`, work stops, and the who/when/why is stored and printed on the PDF. Only users who logged in as **HSSE Officer**, **Area Authority** or **Admin** see this — pick that role at login.
-- **Report unsafe condition.** Anyone on a permit can tap **Report unsafe condition** (e.g. when the applicant's declaration doesn't match site). It records the description + severity, immediately **flags the permit (STOP banner)**, sets SIMOPS to *clash*, and blocks work until a safety officer **Resolves** it or **Revokes** the permit. Every report is kept in the permit's unsafe-condition log and on the PDF.
+- **Report unsafe practice (any role, with photo).** Every user gets a **Report unsafe practice** button on the dashboard, and the option on any permit/approval screen. They describe the issue, set severity, and **attach a photo** (camera or gallery; auto-resized). Reports route to a **safety-officer inbox** (HSSE Officer / Area Authority / Admin) on the dashboard, where the officer reviews the photo and **acknowledges/closes** it — or revokes the linked permit. A permit-linked report also **flags the permit (STOP)** and blocks work until resolved.
 - **Scan site QR.** The **Scan** tab opens the camera (Android Chrome uses the built-in BarcodeDetector — no library). Scanning a placard/permit QR opens that permit; scanning a site/asset code shows all permits at that site and lets you start a new one pre-tagged to it. A manual code box is provided for iPhone/desktop. *(The on-screen permit QR is currently decorative; to make it itself scannable, drop in `qrcode.min.js` (MIT) and replace `fauxQR()` — one function.)*
 
 ## 3. How to extend it yourself
@@ -56,9 +59,30 @@ Data lives in the browser under `localStorage` key `hsse_permits_v1`. A demo per
 
 ## 4. Go multi-user — still 100% open source
 
-The single-file app stores data **on one phone**. To share permits across a team, swap `localStorage` for a tiny self-hosted backend. Two open-source options:
+The single-file app stores data **on one phone**. To share permits across a team, swap `localStorage` for a tiny self-hosted backend.
 
-### Option A — PocketBase (easiest, recommended)
+### Option A (built in) — Cloudflare Worker + D1
+
+This repo now ships a small sync backend: a Cloudflare Worker (`src/index.js`) that serves the app itself as static assets and exposes a JSON API backed by a D1 (SQLite) database (`migrations/0001_init.sql`).
+
+- `GET /api/permits`, `GET /api/observations` — list everything on the server.
+- `POST /api/permits/bulk`, `POST /api/observations/bulk` — upsert a batch (`{ "items": [...] }`), keyed by each record's own `id`.
+
+`index.html` still writes to `localStorage` first (instant, works offline), then debounces a push to `/api/*`, and pulls + merges server data in on load (local copy wins on an id conflict). If the fetch fails — no connection — the app just keeps working from `localStorage` and retries next save or when the `online` event fires.
+
+**Caveat:** the API has no authentication of its own (it mirrors the app's current client-side-only role check, which is also not real auth). Anyone with the Worker's URL can read/write permit data. Fine for an internal pilot behind a private link; add a real auth layer (Cloudflare Access, a signed header, etc.) before using this for anything sensitive.
+
+```bash
+npm install
+npm run db:migrate:remote   # apply schema to the real D1 database
+npm run deploy              # wrangler deploy
+```
+
+### Other open-source options
+
+Two more if you'd rather run your own server instead of D1:
+
+### Option B — PocketBase
 One Go binary. Auth + database + file storage + REST API + admin UI. Runs on a $5/month VPS.
 
 ```bash
@@ -83,7 +107,7 @@ async function update(id,p){ await fetch(`${API}/${id}`, {method:'PATCH', header
 
 Keep `localStorage` as the **offline queue**: write locally first, then POST to PocketBase when `navigator.onLine` — that's your offline-sync.
 
-### Option B — Supabase
+### Option C — Supabase
 Open-source Postgres + row-level security if you prefer SQL and want dashboards/SQL reporting. Same idea: a `permits` table, RLS policies per role, and the JS client (`@supabase/supabase-js`) instead of `fetch`.
 
 ---

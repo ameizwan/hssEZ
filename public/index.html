@@ -112,7 +112,7 @@
   .logo svg{width:32px;height:32px;stroke:#fff;stroke-width:1.8;fill:none}
 
   #print{display:none}
-  @media print{body *{visibility:hidden}#print,#print *{visibility:visible}#print{display:block;position:absolute;left:0;top:0;width:100%;padding:24px;font-size:12px;color:#000}@page{margin:14mm}}
+  @media print{body{max-width:none}body *{visibility:hidden}#print,#print *{visibility:visible}#print{display:block;position:absolute;left:0;top:0;width:100%;padding:24px;font-size:12px;color:#000}@page{margin:14mm}}
 </style>
 </head>
 <body>
@@ -157,13 +157,50 @@ const itemsFor=t=>GENERAL.concat(TYPES[t].spec);
 const VALID_H=8;
 
 /* storage */
-const PKEY='hsse_permits_v3', UKEY='hsse_user_v1';
+const PKEY='hsse_permits_v3', UKEY='hsse_user_v1', OKEY='hsse_obs_v1';
 const load=()=>{try{return JSON.parse(localStorage.getItem(PKEY))||[]}catch(e){return[]}};
-const save=()=>{try{localStorage.setItem(PKEY,JSON.stringify(permits))}catch(e){}};
-let permits=load(), user=null;
+const save=()=>{try{localStorage.setItem(PKEY,JSON.stringify(permits))}catch(e){} pushSync('permits',permits);};
+const loadObs=()=>{try{return JSON.parse(localStorage.getItem(OKEY))||[]}catch(e){return[]}};
+const saveObs=()=>{try{localStorage.setItem(OKEY,JSON.stringify(observations))}catch(e){alert('Storage full — delete old reports or photos.');} pushSync('observations',observations);};
+
+/* ---- server sync (Cloudflare Worker + D1) — best-effort, offline-safe.
+   Writes go through localStorage first (instant, works offline), then get
+   pushed to /api/* so other devices can see them. Pulls on load merge in
+   anything created elsewhere, with this device's copy winning on conflict. */
+const syncTimers={};
+function pushSync(kind,items){
+  clearTimeout(syncTimers[kind]);
+  syncTimers[kind]=setTimeout(()=>{
+    fetch('/api/'+kind+'/bulk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})}).catch(()=>{});
+  },700);
+}
+function mergeById(local,remote){
+  const map=new Map(remote.map(x=>[x.id,x]));
+  local.forEach(x=>map.set(x.id,x));
+  return Array.from(map.values());
+}
+async function pullSync(){
+  try{
+    const [rp,ro]=await Promise.all([fetch('/api/permits'),fetch('/api/observations')]);
+    if(rp.ok){const remote=await rp.json();permits=mergeById(permits,remote);try{localStorage.setItem(PKEY,JSON.stringify(permits))}catch(e){}}
+    if(ro.ok){const remote=await ro.json();observations=mergeById(observations,remote);try{localStorage.setItem(OKEY,JSON.stringify(observations))}catch(e){}}
+    render();
+  }catch(e){/* offline — keep working from localStorage */}
+}
+window.addEventListener('online',()=>{pushSync('permits',permits);pushSync('observations',observations);pullSync();});
+
+let permits=load(), observations=loadObs(), user=null, reportCtx={pid:null}, draftPhoto=null;
 permits.forEach(p=>{if(!p.reports)p.reports=[];if(p.flagged===undefined)p.flagged=false;
-  if(p.revokeReason===undefined){p.revokedBy=null;p.revokedAt=null;p.revokeReason=null;}});
+  if(p.revokeReason===undefined){p.revokedBy=null;p.revokedAt=null;p.revokeReason=null;}
+  if(p.competency===undefined)p.competency='';if(!p.gas)p.gas={o2:'',lel:'',h2s:'',co:'',attendant:'',rescue:false};if(!p.revalidations)p.revalidations=[];});
 try{user=JSON.parse(localStorage.getItem(UKEY)||'null')}catch(e){}
+/* resize a chosen photo to keep storage small, then keep as JPEG data URL */
+function readPhoto(file,cb){if(!file){cb(null);return;}const fr=new FileReader();
+  fr.onload=()=>{const img=new Image();img.onload=()=>{const max=1024;let w=img.width,h=img.height;
+    if(w>h&&w>max){h=Math.round(h*max/w);w=max;}else if(h>=w&&h>max){w=Math.round(w*max/h);h=max;}
+    const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);
+    try{cb(c.toDataURL('image/jpeg',0.6));}catch(e){cb(null);}};img.onerror=()=>cb(null);img.src=fr.result;};
+  fr.onerror=()=>cb(null);fr.readAsDataURL(file);}
 let state={screen:user?'dashboard':'login',pid:null};
 let timer=null;
 
@@ -190,9 +227,11 @@ function fauxQR(text){let h=0;for(const c of text)h=(Math.imul(h,31)+c.charCodeA
 
 /* ================= SCREENS ================= */
 function appbar(title,sub,opt={}){const cls=opt.cls?' '+opt.cls:'';
-  return `<div class="appbar${cls}">${opt.back?`<button class="back" onclick="go('${opt.back}')">‹</button>`:''}
+  const back=opt.backFn?`<button class="back" onclick="${opt.backFn}">‹</button>`:(opt.back?`<button class="back" onclick="go('${opt.back}')">‹</button>`:'');
+  return `<div class="appbar${cls}">${back}
     <div><div class="ttl">${title}</div>${sub?`<div class="sub">${sub}</div>`:''}</div>
     <div class="spacer"></div>${opt.right||''}</div>`;}
+function reopen(){openPermit(state.pid);}
 function tabbar(active){const tab=(id,scr,lbl,svg)=>`<div class="tab ${active===id?'on':''}" onclick="go('${scr}')"><svg viewBox="0 0 24 24">${svg}</svg>${lbl}</div>`;
   return `<div class="tabbar">
     ${tab('home','dashboard','Home','<path d="M3 11l9-8 9 8M5 10v10h14V10"/>')}
@@ -201,6 +240,7 @@ function tabbar(active){const tab=(id,scr,lbl,svg)=>`<div class="tab ${active===
     ${tab('rep','reports','Reports','<path d="M4 19V9M10 19V4M16 19v-7M22 19H2"/>')}
   </div>`;}
 
+const ROLE_PW={'Worker / Applicant':'worker123','Supervisor':'supervisor123','HSSE Officer':'hsse123','Area Authority':'area123','Admin':'admin123'};
 function loginScreen(){return `
   <div class="brand"><div class="logo"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M9 12l2 2 4-4"/></svg></div>
     <div class="h1">HSSE e-PTW</div><div class="sm" style="color:rgba(255,255,255,.6);margin-top:3px">Permit to Work · field safety</div></div>
@@ -210,11 +250,16 @@ function loginScreen(){return `
     <select id="lrole">
       <option>Worker / Applicant</option><option>Supervisor</option><option>HSSE Officer</option><option selected>Area Authority</option><option>Admin</option>
     </select>
+    <label class="fl">Password</label>
+    <input id="lpw" type="password" placeholder="Role password" onkeydown="if(event.key==='Enter')doLogin()">
+    <div id="lerr" class="banner gate" style="display:none">Wrong password for this role.</div>
     <button class="btn b-nav" onclick="doLogin()">Log in</button>
     <div class="row between" style="margin-top:14px"><span class="tag"><span class="d"></span>ID verified</span><span class="chip c-go"><span class="d"></span>Offline ready</span></div>
     <div class="xs mut" style="text-align:center;margin-top:14px">Role-based access · runs offline on this phone</div>
   </div>`;}
 function doLogin(){const n=$('#lname').value.trim()||'User';const r=$('#lrole').value;
+  const pw=$('#lpw')?$('#lpw').value:'';
+  if(pw!==ROLE_PW[r]){const e=$('#lerr');if(e){e.style.display='flex';e.textContent='⚠ Wrong password for '+r+'.';}return;}
   user={name:n,role:r,id:'EMP-'+Math.floor(1000+Math.random()*8999)};
   try{localStorage.setItem(UKEY,JSON.stringify(user))}catch(e){}
   go('dashboard');}
@@ -231,14 +276,23 @@ function dashboard(){
     <div style="flex:1"><div class="h2 sm">${T.name}</div><div class="xs mut readout">${p.no} · ${esc(p.asset)||'—'}</div></div>
     <span class="chip ${st[1]}"><span class="d"></span>${st[0]}</span></div>`;};
   const pending=list.filter(p=>p.status==='pending');
+  const openObs=observations.filter(o=>o.status==='open').slice().reverse();
+  const obsCard=o=>{const sevCls=o.severity.indexOf('Imminent')>=0?'c-stop':(o.severity.indexOf('Unsafe')>=0?'c-warn':'c-mut');
+    return `<div class="item" onclick="obsDetail('${o.id}')">
+      ${o.photo?`<img src="${o.photo}" style="width:42px;height:42px;border-radius:10px;object-fit:cover;flex:none">`:`<div class="ic" style="background:var(--red)">!</div>`}
+      <div style="flex:1"><div class="h2 sm" style="line-height:1.25">${esc(o.desc.length>54?o.desc.slice(0,54)+'…':o.desc)}</div>
+        <div class="xs mut readout">${esc(o.by)} · ${o.permitNo||o.location||'site'} · ${fmt(o.at)}</div></div>
+      <span class="chip ${sevCls}"><span class="d"></span>${o.severity.split(' ')[0]}</span></div>`;};
   return appbar('Hi, '+esc(user.name.split(' ')[0]), user.role+' · '+user.id,{right:`<span class="tag" onclick="logout()" style="cursor:pointer"><span class="d"></span>${user.id}</span>`})
    +`<div class="body">
       <div class="kpis">
         <div class="kpi blue"><div class="num">${active}</div><div class="c2">Active permits</div></div>
         <div class="kpi"><div class="num">${pend}</div><div class="c2">Awaiting approval</div></div>
         <div class="kpi green"><div class="num">${today}</div><div class="c2">Issued today</div></div>
-        <div class="kpi"><div class="num">${closed}</div><div class="c2">Closed</div></div>
+        <div class="kpi ${openObs.length?'alert':''}"><div class="num">${openObs.length}</div><div class="c2">Open unsafe reports</div></div>
       </div>
+      <button class="btn b-stop" onclick="reportUnsafe()" style="margin-bottom:6px"><svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:#fff;stroke-width:2;fill:none"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Report unsafe practice</button>
+      ${isSafety()&&openObs.length?`<div class="sect">Unsafe reports — inbox</div>${openObs.map(obsCard).join('')}`:''}
       ${pending.length?`<div class="sect">Pending your approval</div>${pending.map(card).join('')}`:''}
       <div class="sect">All permits</div>
       ${list.length?list.map(card).join(''):'<div class="empty"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/></svg><div>No permits yet. Tap “New”.</div></div>'}
@@ -253,6 +307,7 @@ function pickType(t){const p={id:'p'+Date.now(),no:uid(),type:t,status:'draft',l
   approvals:{Supervisor:null,'HSSE Officer':null,'Area Authority':null},
   prework:itemsFor(t).map(()=>false),simops:'clear',issuingSig:null,closeoutSig:null,closeout:CLOSEOUT.map(()=>false),
   reports:[],flagged:false,revokedBy:null,revokedAt:null,revokeReason:null,
+  competency:'',gas:{o2:'',lel:'',h2s:'',co:'',attendant:'',rescue:false},revalidations:[],
   createdAt:Date.now(),submittedAt:null,issuedAt:null,activatedAt:null,closedAt:null};
   pendingAsset='';permits.push(p);save();state.pid=p.id;go('capture');}
 
@@ -274,22 +329,48 @@ function capture(){const p=P(),T=TYPES[p.type],rb=riskBand(p.risk.score);
     </div>
     <div class="card"><div class="sect" style="margin-top:0">Control measures in place</div>
       <div class="chipset">${CONTROLS.map(c=>`<div class="tog ${p.controls.includes(c)?'on':''}" onclick="toggleControl('${c}')">${c}</div>`).join('')}</div></div>
+    <div class="card"><div class="sect" style="margin-top:0">Competency / training records</div>
+      <label class="fl">Competent persons + certificate refs</label>
+      <textarea id="comp" placeholder="e.g. Scaffolder CIDB #1234 (exp 2027); AGT cert #88; LOTO authorised — R.Tan">${esc(p.competency||'')}</textarea>
+      <div class="xs mut">Required: named competent persons and valid certificates for this task.</div></div>
+    ${p.type==='CSE'?`<div class="card"><div class="sect" style="margin-top:0">Atmosphere — gas test log</div>
+      <div class="grid2">
+        <div><label class="fl">O₂ %</label><input id="g_o2" value="${esc(p.gas.o2)}" placeholder="19.5–23.5"></div>
+        <div><label class="fl">LEL %</label><input id="g_lel" value="${esc(p.gas.lel)}" placeholder="&lt;10"></div>
+        <div><label class="fl">H₂S ppm</label><input id="g_h2s" value="${esc(p.gas.h2s)}" placeholder="&lt;10"></div>
+        <div><label class="fl">CO ppm</label><input id="g_co" value="${esc(p.gas.co)}" placeholder="&lt;35"></div>
+      </div>
+      <label class="fl">Attendant (hole watch)</label><input id="g_att" value="${esc(p.gas.attendant)}" placeholder="Name of standby attendant">
+      <div class="tog ${p.gas.rescue?'on':''}" onclick="toggleRescue()" style="margin-top:4px">Rescue plan + team on standby</div></div>`:''}
     <button class="btn b-nav" onclick="toCompliance()">Run compliance check →</button>
   </div>`;}
 function captureGPS(){const t=$('#gpsTag'),p=P();t.innerHTML='<span class="d"></span>Locating…';
   const set=g=>{p.location=g;save();t.innerHTML=`<span class="d"></span>${g.lat}, ${g.lng}`;};
   if(!navigator.geolocation)return set({lat:3.1390,lng:101.6869});
   navigator.geolocation.getCurrentPosition(x=>set({lat:+x.coords.latitude.toFixed(5),lng:+x.coords.longitude.toFixed(5)}),()=>set({lat:3.1390,lng:101.6869}));}
-function toggleControl(c){const p=P();const i=p.controls.indexOf(c);if(i<0)p.controls.push(c);else p.controls.splice(i,1);save();render();}
+function toggleControl(c){const p=P();grabCapture();const i=p.controls.indexOf(c);if(i<0)p.controls.push(c);else p.controls.splice(i,1);save();render();}
+function toggleRescue(){const p=P();grabCapture();p.gas.rescue=!p.gas.rescue;save();render();}
 function syncRisk(){const p=P();const lk=+$('#lk').value,sv=+$('#sv').value;p.risk={l:lk,s:sv,score:lk*sv};
   const rb=riskBand(p.risk.score);$('#riskOut').className='chip '+rb[1];$('#riskOut').innerHTML=`<span class="d"></span>${rb[0]} · ${p.risk.score}`;}
 function grabCapture(){const p=P();p.asset=$('#asset').value.trim();p.desc=$('#desc').value.trim();p.applicant=$('#applicant').value.trim()||user.name;
-  p.risk.l=+$('#lk').value;p.risk.s=+$('#sv').value;p.risk.score=p.risk.l*p.risk.s;save();}
+  p.risk.l=+$('#lk').value;p.risk.s=+$('#sv').value;p.risk.score=p.risk.l*p.risk.s;
+  if($('#comp'))p.competency=$('#comp').value.trim();
+  if(p.type==='CSE'&&$('#g_o2')){p.gas.o2=$('#g_o2').value.trim();p.gas.lel=$('#g_lel').value.trim();p.gas.h2s=$('#g_h2s').value.trim();p.gas.co=$('#g_co').value.trim();p.gas.attendant=$('#g_att').value.trim();}
+  save();}
 function toCompliance(){grabCapture();const p=P();const gaps=[];
   if(!p.location)gaps.push('GPS location not captured');
   if(!p.asset)gaps.push('Asset / area not specified');
   if(!p.applicant||p.applicant==='—')gaps.push('Applicant not named');
   if(p.controls.length<2)gaps.push('Select at least 2 control measures');
+  if(!p.competency)gaps.push('Competency / certificates not recorded');
+  if(p.type==='CSE'){const g=p.gas,n=v=>parseFloat(v);
+    if(g.o2===''||g.lel===''||g.h2s===''||g.co==='')gaps.push('Gas test readings incomplete (O₂/LEL/H₂S/CO)');
+    else{if(n(g.o2)<19.5||n(g.o2)>23.5)gaps.push('O₂ outside 19.5–23.5%');
+      if(n(g.lel)>=10)gaps.push('LEL ≥ 10% — not safe to enter');
+      if(n(g.h2s)>=10)gaps.push('H₂S ≥ 10 ppm');
+      if(n(g.co)>=35)gaps.push('CO ≥ 35 ppm');}
+    if(!g.attendant)gaps.push('Confined-space attendant not named');
+    if(!g.rescue)gaps.push('Rescue plan / team not confirmed');}
   p.compliance={passed:gaps.length===0,gaps};p.status='compliance';save();go('compliance');}
 
 function compliance(){const p=P(),c=p.compliance,pass=c.passed;
@@ -315,11 +396,18 @@ function approval(){const p=P(),T=TYPES[p.type],roles=Object.keys(p.approvals);
     <div class="card"><div class="row between"><div><div class="h2 sm">${T.name}</div><div class="xs mut">Applicant · ${esc(p.applicant)}</div></div>
       <span class="chip ${riskBand(p.risk.score)[1]}"><span class="d"></span>${riskBand(p.risk.score)[0]} risk</span></div></div>
     <div class="sect">Approval chain</div><div class="card">${chain}</div>`;
-  if(nextRole){h+=`<div class="banner off">Next sign-off: <b>&nbsp;${nextRole}</b></div>
+  if(nextRole){
+    if(p.flagged){const last=p.reports[p.reports.length-1];
+      h+=`<div class="banner gate">⚠ STOP — unsafe condition reported${last?': '+esc(last.desc):''}</div>`;}
+    h+=`<div class="banner off">Next sign-off: <b>&nbsp;${nextRole}</b></div>
     <div class="btn-row"><button class="btn b-stop" style="flex:.7" onclick="returnPermit()">Return</button>
-      <button class="btn b-go" onclick="approveStep()">Approve as ${nextRole}</button></div>
+      <button class="btn b-go" ${p.flagged?'disabled':''} onclick="approveStep()">Approve as ${nextRole}</button></div>
     <div class="xs mut" style="text-align:center;margin-top:9px">Signing as ${esc(user.name)} (${esc(user.role)})</div>`;
   }else{h+=`<div class="banner ok">✓ Fully approved — digital permit issued</div><button class="btn b-blue" onclick="go('permit')">Open active permit →</button>`;}
+  // safety actions — available on every permit awaiting/under approval
+  h+=`<div class="sect">Safety actions</div>`;
+  h+=`<button class="btn b-ghost" onclick="gotoReport()" style="margin-bottom:10px;color:#a31e30;border-color:#f1bcc4">⚠ Report unsafe condition</button>`;
+  if(isSafety())h+=`<button class="btn b-stop" onclick="gotoRevoke()">Revoke permit (HSSE)</button>`;
   return h+`</div>`;}
 function approveStep(){const p=P();const r=Object.keys(p.approvals).find(x=>!p.approvals[x]);if(!r)return;
   p.approvals[r]={by:user.name,at:Date.now()};
@@ -362,7 +450,12 @@ function permit(){const p=P(),T=TYPES[p.type],items=itemsFor(p.type),genN=GENERA
     if(issued){h+=`<div class="banner ${ready?'ok':'gate'}">${p.flagged?'⚠ Blocked — unsafe condition open':(ready?'✓ All checks done — work may begin':'⚠ Work cannot begin until all items verified ('+done+'/'+items.length+')')}</div>
       <div class="btn-row"><button class="btn b-stop" style="flex:.7" onclick="suspend()">Suspend</button>
       <button class="btn b-go" ${ready?'':'disabled'} onclick="startWork()">Start work</button></div>`;}
-    if(active){h+=`<div class="banner ${p.flagged?'gate':'ok'}">${p.flagged?'⚠ Unsafe condition open — resolve before continuing':'● Work in progress'}</div><button class="btn b-nav" ${p.flagged?'disabled':''} onclick="go('closeout')">Work complete → closeout</button>`;}
+    if(active){h+=`<div class="banner ${p.flagged?'gate':'ok'}">${p.flagged?'⚠ Unsafe condition open — resolve before continuing':'● Work in progress'}</div>`;
+      // per-shift revalidation
+      const lastRev=p.revalidations[p.revalidations.length-1];
+      h+=`<div class="card"><div class="row between"><div><div class="h2 sm">Per-shift revalidation</div><div class="xs mut">${lastRev?('Last: '+esc(lastRev.by)+' · '+fmt(lastRev.at)):'Not yet revalidated this permit'}</div></div>
+        <button class="b-ghost btn" style="width:auto;padding:9px 13px;font-size:12px;${p.flagged?'opacity:.45':''}" ${p.flagged?'disabled':''} onclick="revalidate()">Revalidate shift</button></div></div>`;
+      h+=`<button class="btn b-nav" ${p.flagged?'disabled':''} onclick="go('closeout')">Work complete → closeout</button>`;}
     // action buttons: report (everyone) + revoke (safety officers)
     h+=`<div class="sect">Actions</div>`;
     h+=`<button class="btn b-ghost" onclick="gotoReport()" style="margin-bottom:10px;color:#a31e30;border-color:#f1bcc4"><svg viewBox="0 0 24 24" style="width:17px;height:17px;stroke:var(--red);stroke-width:2;fill:none"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Report unsafe condition</button>`;
@@ -372,44 +465,93 @@ function permit(){const p=P(),T=TYPES[p.type],items=itemsFor(p.type),genN=GENERA
       <div class="card"><div class="row between"><span class="lbl">Activated</span><span class="readout sm">${fmt(p.activatedAt)}</span></div>
         <div class="row between" style="margin-top:8px"><span class="lbl">Closed</span><span class="readout sm">${fmt(p.closedAt)}</span></div></div>`;
   }
+  // competency + gas + revalidation records
+  if(p.competency){h+=`<div class="sect">Competency / training</div><div class="card sm">${esc(p.competency)}</div>`;}
+  if(p.type==='CSE'&&p.gas&&p.gas.o2!==''){h+=`<div class="sect">Atmosphere — gas test</div><div class="card">
+    <div class="row wrap" style="gap:7px"><span class="tag"><span class="d"></span>O₂ ${esc(p.gas.o2)}%</span><span class="tag"><span class="d"></span>LEL ${esc(p.gas.lel)}%</span><span class="tag"><span class="d"></span>H₂S ${esc(p.gas.h2s)}</span><span class="tag"><span class="d"></span>CO ${esc(p.gas.co)}</span></div>
+    <div class="row between" style="margin-top:10px"><span class="lbl">Attendant</span><span class="val sm">${esc(p.gas.attendant)||'—'}</span></div>
+    <div class="row between" style="margin-top:6px"><span class="lbl">Rescue plan</span><span class="chip ${p.gas.rescue?'c-go':'c-stop'}"><span class="d"></span>${p.gas.rescue?'Confirmed':'No'}</span></div></div>`;}
+  if(p.revalidations&&p.revalidations.length){h+=`<div class="sect">Revalidation / shift log</div><div class="card">${p.revalidations.map(r=>`<div class="badge"><div class="tk"><svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 7"/></svg></div><div><div class="bt sm">${esc(r.note)}</div><div class="xs mut readout">${esc(r.by)} · ${fmt(r.at)}</div></div></div>`).join('')}</div>`;}
   // history of reports
-  if(p.reports.length){h+=`<div class="sect">Unsafe-condition log</div><div class="card">${p.reports.map(r=>`<div class="badge" style="align-items:flex-start"><div class="tk" style="background:var(--red-bg)"><svg viewBox="0 0 24 24" style="stroke:var(--red)"><path d="M12 9v6M12 4l-1 0"/></svg></div><div><div class="bt sm">${esc(r.desc)}</div><div class="xs mut readout">${esc(r.by)} · ${r.severity} · ${fmt(r.at)}</div></div></div>`).join('')}</div>`;}
+  if(p.reports.length){h+=`<div class="sect">Unsafe-condition log</div><div class="card">${p.reports.map(r=>`<div class="badge" style="align-items:flex-start"><div class="tk" style="background:var(--red-bg)"><svg viewBox="0 0 24 24" style="stroke:var(--red)"><path d="M12 9v6M12 4l-1 0"/></svg></div><div style="flex:1"><div class="bt sm">${esc(r.desc)}</div><div class="xs mut readout">${esc(r.by)} · ${r.severity} · ${fmt(r.at)}</div>${r.photo?`<img src="${r.photo}" style="width:100%;max-height:200px;object-fit:cover;border-radius:10px;margin-top:7px">`:''}</div></div>`).join('')}</div>`;}
   h+=`<button class="btn b-ghost" onclick="exportPDF()" style="margin-top:6px">Export PDF</button></div>`;
   return h;}
 
-/* ---- unsafe condition report ---- */
-function gotoReport(){go('report');}
-function reportScreen(){const p=P(),T=TYPES[p.type];
-  return appbar('Report unsafe condition',p.no+' · '+T.name,{back:'permit',cls:'red'})+`<div class="body">
-    <div class="banner off">Use this when site conditions do not match the permit declaration.</div>
+/* ---- unsafe report: any role, with photo, routed to safety officers ---- */
+function gotoReport(){reportCtx={pid:state.pid};draftPhoto=null;go('report');}      // from a permit/approval
+function reportUnsafe(){reportCtx={pid:null};draftPhoto=null;go('report');}          // standalone, from dashboard
+function reportScreen(){const p=reportCtx.pid?permits.find(x=>x.id===reportCtx.pid):null;
+  const sub=p?(p.no+' · '+TYPES[p.type].name):'Standalone site observation';
+  return appbar('Report unsafe practice',sub,{backFn:p?'reopen()':"go('dashboard')",cls:'red'})+`<div class="body">
+    <div class="banner off">Any worker can raise this. It is sent to the HSSE officer and above.${p?' Filing flags this permit (STOP).':''}</div>
     <label class="fl">What is unsafe? (required)</label>
-    <textarea id="rdesc" placeholder="e.g. Scaffold tag expired; harness not worn; gas test not done…"></textarea>
+    <textarea id="rdesc" placeholder="e.g. Working at height without harness; scaffold tag expired; declaration not matching site…"></textarea>
+    ${p?'':`<label class="fl">Location / area</label><input id="rloc" placeholder="e.g. Hangar 3 — Bay 12">
+    <label class="fl">Related permit no. (optional)</label><input id="rpermit" placeholder="e.g. PTW-0451">`}
     <label class="fl">Severity</label>
-    <select id="rsev"><option>Concern — monitor</option><option selected>Unsafe — stop & review</option><option>Imminent danger — stop now</option></select>
-    <div class="banner gate">Filing this immediately flags the permit and notifies the safety officer.</div>
-    <div class="btn-row"><button class="b-ghost btn" onclick="go('permit')">Cancel</button>
-      <button class="btn b-stop" onclick="submitReport()">Submit report</button></div></div>`;}
-function submitReport(){const p=P();const d=$('#rdesc').value.trim();
+    <select id="rsev"><option>Concern — monitor</option><option selected>Unsafe — stop &amp; review</option><option>Imminent danger — stop now</option></select>
+    <label class="fl">Photo evidence</label>
+    <input id="rphoto" type="file" accept="image/*" capture="environment" onchange="grabPhoto(this)">
+    <div id="rthumb"></div>
+    <div class="btn-row" style="margin-top:6px"><button class="b-ghost btn" onclick="${p?'reopen()':"go('dashboard')"}">Cancel</button>
+      <button class="btn b-stop" onclick="submitReport()">Submit to safety officer</button></div></div>`;}
+function grabPhoto(input){const f=input.files&&input.files[0];if(!f)return;
+  readPhoto(f,d=>{draftPhoto=d;const t=document.getElementById('rthumb');
+    if(t)t.innerHTML=d?`<img src="${d}" style="width:100%;max-height:230px;object-fit:cover;border-radius:12px;margin-top:8px">`:'<div class="xs mut">Could not read image.</div>';});}
+function submitReport(){const d=($('#rdesc')?$('#rdesc').value:'').trim();
   if(!d){alert('Please describe the unsafe condition.');return;}
-  p.reports.push({by:user.name,role:user.role,at:Date.now(),desc:d,severity:$('#rsev').value});
-  p.flagged=true;p.simops='clash';save();go('permit');}
+  const sev=$('#rsev').value;
+  let p=reportCtx.pid?permits.find(x=>x.id===reportCtx.pid):null;
+  let loc='',pno='';
+  if(!p){loc=($('#rloc')?$('#rloc').value:'').trim();pno=($('#rpermit')?$('#rpermit').value:'').trim();
+    if(pno){const m=permits.find(x=>x.no.toLowerCase()===pno.toLowerCase());if(m)p=m;}}
+  const at=Date.now();
+  const obs={id:'o'+at,by:user.name,role:user.role,at:at,desc:d,severity:sev,photo:draftPhoto||null,
+    location:p?(p.asset||''):loc,permitId:p?p.id:null,permitNo:p?p.no:(pno||null),status:'open',closedBy:null,closedAt:null};
+  observations.push(obs);saveObs();
+  if(p){p.reports.push({by:user.name,role:user.role,at:at,desc:d,severity:sev,photo:draftPhoto||null});
+    p.flagged=true;p.simops='clash';save();}
+  draftPhoto=null;
+  alert('Report submitted to the safety officer.');
+  if(p)reopen();else go('dashboard');}
+
+/* ---- safety inbox: open unsafe reports for HSSE & above ---- */
+function obsDetail(id){state.obsId=id;go('obs');}
+function obsScreen(){const o=observations.find(x=>x.id===state.obsId);if(!o)return go('dashboard');
+  const sevCls=o.severity.indexOf('Imminent')>=0?'c-stop':(o.severity.indexOf('Unsafe')>=0?'c-warn':'c-mut');
+  let h=appbar('Unsafe report',fmt(o.at),{backFn:"go('dashboard')",cls:'red'})+`<div class="body">
+    <div class="card"><div class="row between"><span class="chip ${sevCls}"><span class="d"></span>${esc(o.severity)}</span>
+      <span class="chip ${o.status==='open'?'c-warn':'c-go'}"><span class="d"></span>${o.status==='open'?'Open':'Closed'}</span></div>
+      <div class="sm" style="margin-top:10px;font-weight:600">${esc(o.desc)}</div>
+      <div class="xs mut readout" style="margin-top:8px">${esc(o.by)} · ${esc(o.role)} · ${fmt(o.at)}</div>
+      ${o.location?`<div class="xs mut" style="margin-top:4px">Location: ${esc(o.location)}</div>`:''}
+      ${o.permitNo?`<div class="xs mut" style="margin-top:2px">Permit: ${esc(o.permitNo)}</div>`:''}</div>
+    ${o.photo?`<img src="${o.photo}" style="width:100%;border-radius:14px;margin-bottom:12px">`:'<div class="banner off">No photo attached</div>'}`;
+  if(o.permitId&&permits.find(x=>x.id===o.permitId))h+=`<button class="btn b-blue" style="margin-bottom:10px" onclick="openPermit('${o.permitId}')">Open linked permit →</button>`;
+  if(o.status==='open'){
+    if(isSafety())h+=`<button class="btn b-go" onclick="closeObs('${o.id}')">Acknowledge &amp; close report</button>`;
+    else h+=`<div class="banner gate">Awaiting safety-officer review.</div>`;
+  }else h+=`<div class="banner ok">Closed by ${esc(o.closedBy)} · ${fmt(o.closedAt)}</div>`;
+  return h+`</div>`;}
+function closeObs(id){const o=observations.find(x=>x.id===id);if(!o)return;
+  o.status='closed';o.closedBy=user.name;o.closedAt=Date.now();saveObs();go('dashboard');}
 
 /* ---- revoke (safety officer) ---- */
 function gotoRevoke(){if(!isSafety()){alert('Only HSSE / Area Authority can revoke.');return;}go('revoke');}
 function revokeScreen(){const p=P(),T=TYPES[p.type];
-  return appbar('Revoke permit',p.no+' · '+T.name,{back:'permit',cls:'red'})+`<div class="body">
+  return appbar('Revoke permit',p.no+' · '+T.name,{backFn:'reopen()',cls:'red'})+`<div class="body">
     <div class="card"><div class="row"><svg viewBox="0 0 24 24" style="width:24px;height:24px;flex:none;stroke:var(--red);stroke-width:2;fill:none"><circle cx="12" cy="12" r="9"/><path d="M8 8l8 8M16 8l-8 8"/></svg>
       <div class="sm">Revoking stops all work under this permit. It cannot be reactivated — a new permit is required.</div></div></div>
     <label class="fl">Reason for revocation (required)</label>
     <textarea id="rvreason" placeholder="e.g. Conditions changed; declaration not matching site; safety breach observed…"></textarea>
     <div class="xs mut" style="margin-bottom:12px">Revoking as <b>${esc(user.name)}</b> · ${esc(user.role)}</div>
-    <div class="btn-row"><button class="b-ghost btn" onclick="go('permit')">Cancel</button>
+    <div class="btn-row"><button class="b-ghost btn" onclick="reopen()">Cancel</button>
       <button class="btn b-stop" onclick="submitRevoke()">Confirm revoke</button></div></div>`;}
 function submitRevoke(){const p=P();const r=$('#rvreason').value.trim();
   if(!r){alert('A reason is required to revoke a permit.');return;}
-  p.status='revoked';p.revokedBy=user.name;p.revokedAt=Date.now();p.revokeReason=r;p.flagged=false;save();go('permit');}
+  p.status='revoked';p.revokedBy=user.name;p.revokedAt=Date.now();p.revokeReason=r;p.flagged=false;save();reopen();}
 function resolveFlag(){const p=P();if(!confirm('Mark the unsafe condition as resolved?'))return;
-  p.flagged=false;p.simops='clear';p.reports.push({by:user.name,role:user.role,at:Date.now(),desc:'Condition resolved / cleared by safety officer.',severity:'Resolved'});save();go('permit');}
+  p.flagged=false;p.simops='clear';p.reports.push({by:user.name,role:user.role,at:Date.now(),desc:'Condition resolved / cleared by safety officer.',severity:'Resolved'});save();reopen();}
 
 /* ---- QR scanner ---- */
 function scannerScreen(){return appbar('Scan site QR','Open the permit or site for this location')+`<div class="body">
@@ -448,7 +590,10 @@ function startTimer(){const p=P();if(!p||(p.status!=='issued'&&p.status!=='activ
     el.textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;};
   tick();timer=setInterval(tick,1000);}
 function togglePre(i){const p=P();p.prework[i]=!p.prework[i];save();render();}
-function startWork(){const p=P();p.status='active';p.activatedAt=Date.now();save();render();}
+function startWork(){const p=P();p.status='active';p.activatedAt=Date.now();
+  p.revalidations.push({by:user.name,role:user.role,at:Date.now(),note:'Initial activation'});save();render();}
+function revalidate(){const p=P();p.revalidations.push({by:user.name,role:user.role,at:Date.now(),note:'Shift revalidation — re-verified safe to continue'});
+  p.issuedAt=Date.now();save();render();}
 function suspend(){const p=P();p.simops='clash';save();render();}
 
 function closeout(){const p=P(),T=TYPES[p.type];const done=p.closeout.filter(Boolean).length,ready=done===CLOSEOUT.length&&p.closeoutSig;
@@ -492,26 +637,71 @@ function bindSig(id,onEnd,existing){const cv=$('#'+id);if(!cv)return;const r=cv.
   cv.onmouseup=cv.onmouseleave=cv.ontouchend=()=>{if(dr){dr=false;onEnd(cv.toDataURL());}};}
 function clearCsig(){const p=P();p.closeoutSig=null;save();render();}
 
-/* PDF */
-function exportPDF(){const p=P(),T=TYPES[p.type],items=itemsFor(p.type),rb=riskBand(p.risk.score);
-  const appr=Object.entries(p.approvals).map(([r,a])=>`${r}: ${a?esc(a.by)+' ('+fmt(a.at)+')':'—'}`).join('<br>');
-  $('#print').innerHTML=`<h2 style="margin:0 0 2px">Permit to Work — ${T.name}</h2>
-    <div style="font-family:monospace;color:#555">${p.no} · Status: ${p.status.toUpperCase()}</div><hr style="margin:10px 0">
-    <p><b>Asset/area:</b> ${esc(p.asset)||'—'} &nbsp; <b>Location:</b> ${p.location?p.location.lat+', '+p.location.lng:'—'}</p>
-    <p><b>Applicant:</b> ${esc(p.applicant)} &nbsp; <b>Risk:</b> ${rb[0]} (${p.risk.score})</p>
-    <p><b>Controls:</b> ${p.controls.join(', ')||'—'}</p>
-    <p><b>Work:</b> ${esc(p.desc)||'—'}</p>
-    <p><b>Issued:</b> ${fmt(p.issuedAt)} &nbsp; <b>Activated:</b> ${fmt(p.activatedAt)} &nbsp; <b>Closed:</b> ${fmt(p.closedAt)}</p>
-    <h3 style="margin:12px 0 4px">Approvals</h3><p style="margin:0">${appr}</p>
-    <h3 style="margin:12px 0 4px">Pre-work verification</h3>
-    <ul style="margin:0 0 10px 18px">${items.map((c,i)=>`<li>${p.prework[i]?'☑':'☐'} ${c[0]} — <i>${c[1]}</i></li>`).join('')}</ul>
-    ${p.status==='revoked'?`<h3 style="margin:12px 0 4px;color:#a31e30">REVOKED</h3><p style="margin:0">By ${esc(p.revokedBy)} on ${fmt(p.revokedAt)} — ${esc(p.revokeReason)}</p>`:''}
-    ${p.reports&&p.reports.length?`<h3 style="margin:12px 0 4px">Unsafe-condition log</h3><ul style="margin:0 0 10px 18px">${p.reports.map(r=>`<li>[${r.severity}] ${esc(r.desc)} — ${esc(r.by)}, ${fmt(r.at)}</li>`).join('')}</ul>`:''}
-    <p style="font-size:10px;color:#777">HSSE e-PTW · audit ID ${p.id}</p>`;
-  window.print();}
+/* ---- PDF: self-contained generator (no print dialog, no pop-up, works offline) ---- */
+function buildLines(p){const T=TYPES[p.type],items=itemsFor(p.type),rb=riskBand(p.risk.score);const L=[];
+  const add=(t,b,s,gap)=>L.push({t:t,b:!!b,s:s||9,gap:gap||0});
+  add('PERMIT TO WORK - '+T.name,true,16,3);
+  add(p.no+'    Status: '+p.status.toUpperCase(),false,9,6);
+  add('Asset / area: '+(p.asset||'-'),false,9);
+  add('Location: '+(p.location?p.location.lat+', '+p.location.lng:'-'),false,9);
+  add('Applicant: '+p.applicant+'     Risk: '+rb[0]+' ('+p.risk.score+')',false,9);
+  add('Controls: '+(p.controls.join(', ')||'-'),false,9);
+  add('Competency / certs: '+(p.competency||'-'),false,9);
+  if(p.type==='CSE'&&p.gas&&p.gas.o2!=='')add('Gas test: O2 '+p.gas.o2+'%  LEL '+p.gas.lel+'%  H2S '+p.gas.h2s+'  CO '+p.gas.co+'   Attendant: '+(p.gas.attendant||'-')+'   Rescue: '+(p.gas.rescue?'yes':'no'),false,9);
+  add('Work: '+(p.desc||'-'),false,9);
+  add('Issued: '+fmt(p.issuedAt)+'    Activated: '+fmt(p.activatedAt)+'    Closed: '+fmt(p.closedAt),false,9,6);
+  add('APPROVALS',true,11,2);
+  Object.entries(p.approvals).forEach(([r,a])=>add('  - '+r+': '+(a?a.by+' ('+fmt(a.at)+')':'-'),false,9));
+  L[L.length-1].gap=6;
+  add('PRE-WORK VERIFICATION',true,11,2);
+  items.forEach((c,i)=>add('  '+(p.prework[i]?'[x] ':'[ ] ')+c[0]+'  ('+c[1]+')',false,9));
+  L[L.length-1].gap=6;
+  if(p.revalidations&&p.revalidations.length){add('REVALIDATION / SHIFT LOG',true,11,2);
+    p.revalidations.forEach(r=>add('  - '+r.note+'  ('+r.by+', '+fmt(r.at)+')',false,9));L[L.length-1].gap=6;}
+  if(p.status==='revoked'){add('REVOKED',true,11,2);add('  By '+p.revokedBy+' on '+fmt(p.revokedAt),false,9);add('  Reason: '+p.revokeReason,false,9,6);}
+  if(p.reports&&p.reports.length){add('UNSAFE-CONDITION LOG',true,11,2);
+    p.reports.forEach(r=>add('  ['+r.severity+'] '+r.desc+(r.photo?'  [photo attached]':'')+'  ('+r.by+', '+fmt(r.at)+')',false,9));L[L.length-1].gap=6;}
+  add('Generated by HSSE e-PTW   audit ID '+p.id,false,8,0);
+  return L;}
+function pdfDoc(lines){
+  const PWp=595,PHp=842,M=50,top=PHp-55,bottom=50;
+  const clean=s=>(s==null?'':String(s)).replace(/[\u2010-\u2015\u2212]/g,'-').replace(/[\u2022\u00B7]/g,'-').replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"').replace(/\u2265/g,'>=').replace(/\u2264/g,'<=').replace(/[^\x20-\x7E]/g,'');
+  const escp=s=>s.replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
+  const wrap=(t,size)=>{const max=Math.max(8,Math.floor((PWp-2*M)/(size*0.5)));const words=t.split(' ');const out=[];let cur='';
+    for(let w of words){const cand=cur?cur+' '+w:w;if(cand.length<=max){cur=cand;}else{if(cur)out.push(cur);while(w.length>max){out.push(w.slice(0,max));w=w.slice(max);}cur=w;}}
+    if(cur!=='')out.push(cur);return out.length?out:[''];};
+  const streams=[];let s='',y=top,used=false;
+  const flush=()=>{if(used)streams.push('BT\n'+s+'ET\n');s='';y=top;used=false;};
+  for(const ln of lines){const size=ln.s,font=ln.b?'F2':'F1';
+    for(const seg of wrap(clean(ln.t),size)){const lh=size+5;if(y-lh<bottom)flush();
+      s+='/'+font+' '+size+' Tf 1 0 0 1 '+M+' '+y+' Tm ('+escp(seg)+') Tj\n';used=true;y-=lh;}
+    if(ln.gap)y-=ln.gap;}
+  flush();if(!streams.length)streams.push('BT\nET\n');
+  const np=streams.length,pageStart=5,contentStart=5+np,parts=[];
+  const kids=[];for(let i=0;i<np;i++)kids.push((pageStart+i)+' 0 R');
+  parts[1]='<< /Type /Catalog /Pages 2 0 R >>';
+  parts[2]='<< /Type /Pages /Kids ['+kids.join(' ')+'] /Count '+np+' >>';
+  parts[3]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+  parts[4]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
+  for(let i=0;i<np;i++)parts[pageStart+i]='<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+PWp+' '+PHp+'] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents '+(contentStart+i)+' 0 R >>';
+  for(let i=0;i<np;i++){const st=streams[i];parts[contentStart+i]='<< /Length '+st.length+' >>\nstream\n'+st+'endstream';}
+  let body='%PDF-1.4\n';const off=[];
+  for(let n=1;n<parts.length;n++){off[n]=body.length;body+=n+' 0 obj\n'+parts[n]+'\nendobj\n';}
+  const xrefPos=body.length;let xref='xref\n0 '+parts.length+'\n0000000000 65535 f \n';
+  for(let n=1;n<parts.length;n++)xref+=String(off[n]).padStart(10,'0')+' 00000 n \n';
+  body+=xref+'trailer\n<< /Size '+parts.length+' /Root 1 0 R >>\nstartxref\n'+xrefPos+'\n%%EOF';
+  return body;}
+function exportPDF(){const p=P();
+  try{const data=pdfDoc(buildLines(p));const bytes=new Uint8Array(data.length);
+    for(let i=0;i<data.length;i++)bytes[i]=data.charCodeAt(i)&0xff;
+    const blob=new Blob([bytes],{type:'application/pdf'});const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=p.no.replace(/[^A-Za-z0-9_-]/g,'_')+'.pdf';
+    document.body.appendChild(a);a.click();
+    setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}a.remove();},2000);
+  }catch(e){alert('Could not generate PDF: '+e.message);}}
 
 /* ===== render ===== */
-function render(){const m={login:loginScreen,dashboard:dashboard,picker:picker,capture:capture,compliance:compliance,approval:approval,permit:permit,closeout:closeout,reports:reports,scanner:scannerScreen,report:reportScreen,revoke:revokeScreen,site:siteScreen};
+function render(){const m={login:loginScreen,dashboard:dashboard,picker:picker,capture:capture,compliance:compliance,approval:approval,permit:permit,closeout:closeout,reports:reports,scanner:scannerScreen,report:reportScreen,revoke:revokeScreen,site:siteScreen,obs:obsScreen};
   $('#app').innerHTML=(m[state.screen]||dashboard)();
   if(state.screen==='capture'){const lk=$('#lk'),sv=$('#sv');if(lk)lk.onchange=syncRisk;if(sv)sv.onchange=syncRisk;}
   if(state.screen==='permit'&&P()&&(P().status==='issued'||P().status==='active'))startTimer();
@@ -524,8 +714,9 @@ function seed(){if(permits.length)return;const t='WAH';
    compliance:{passed:true,gaps:[]},approvals:{Supervisor:{by:'R. Tan',at:Date.now()-5400000},'HSSE Officer':{by:'S. Devi',at:Date.now()-4800000},'Area Authority':{by:'Faizal A.',at:Date.now()-4200000}},
    prework:itemsFor(t).map(()=>true),simops:'clear',issuingSig:null,closeoutSig:null,closeout:CLOSEOUT.map(()=>false),
    reports:[],flagged:false,revokedBy:null,revokedAt:null,revokeReason:null,
+   competency:'Scaffolder CIDB #1204 (exp 2027); WAH-trained crew · R. Tan',gas:{o2:'',lel:'',h2s:'',co:'',attendant:'',rescue:false},revalidations:[],
    createdAt:Date.now()-7200000,submittedAt:Date.now()-6000000,issuedAt:Date.now()-4200000,activatedAt:Date.now()-3600000,closedAt:null});save();}
-seed();render();
+seed();render();pullSync();
 if('serviceWorker' in navigator && location.protocol!=='file:'){navigator.serviceWorker.register('sw.js').catch(()=>{});}
 </script>
 </body>
