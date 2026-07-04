@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#16263A">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<title>HSSE e-PTW</title>
+<style>
+  :root{
+    --ink:#16263A;--bg:#EAEFF4;--card:#fff;--line:#E2E8EF;--muted:#5C6B7A;
+    --amber:#B8820A;--amber-bg:#FFF3D4;--green:#1E9E5A;--green-bg:#E3F5EA;
+    --blue:#1F5BA8;--blue-bg:#E5EDF8;--red:#C5283D;--red-bg:#FBE6E9;
+    --mono:ui-monospace,"SF Mono","Roboto Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{font-family:var(--sans);background:var(--bg);color:var(--ink);line-height:1.4;max-width:480px;margin:0 auto}
+  #app{min-height:100vh}
+  .appbar{background:var(--ink);color:#fff;padding:calc(env(safe-area-inset-top) + 14px) 16px 14px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:10}
+  .appbar.blue{background:var(--blue)}.appbar.red{background:var(--red)}.appbar.green{background:#157A45}
+  .appbar .ttl{font-size:18px;font-weight:800;letter-spacing:-.01em}
+  .appbar .sub{font-size:11px;color:rgba(255,255,255,.72);margin-top:1px}
+  .appbar .spacer{flex:1}
+  .back{background:none;border:none;color:#fff;font-size:24px;cursor:pointer;line-height:1;padding:0 4px 0 0}
+  .body{padding:14px 14px 96px}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+  .sect{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 2px 9px}
+  .sect:first-child{margin-top:2px}
+  .row{display:flex;align-items:center;gap:10px}.between{justify-content:space-between}.wrap{flex-wrap:wrap}
+  .h1{font-size:18px;font-weight:800}.h2{font-size:15px;font-weight:700}
+  .lbl{font-size:11px;color:var(--muted);font-weight:600}.mut{color:var(--muted)}.sm{font-size:12px}.xs{font-size:10.5px}
+  .readout{font-family:var(--mono);font-weight:700}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;border-radius:999px;padding:4px 11px}
+  .chip .d{width:6px;height:6px;border-radius:50%;background:currentColor}
+  .c-go{background:var(--green-bg);color:#0f7a3e}.c-active{background:var(--blue-bg);color:#1a4d8f}
+  .c-stop{background:var(--red-bg);color:#a31e30}.c-warn{background:var(--amber-bg);color:#7a5800}.c-mut{background:#eef2f6;color:var(--muted)}
+  .tag{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;font-weight:700;background:var(--amber-bg);color:#7a5800;border-radius:8px;padding:5px 9px}
+  .tag .d{width:6px;height:6px;border-radius:50%;background:var(--amber)}
+
+  label.fl{display:block;font-size:11px;font-weight:700;color:var(--muted);margin:0 0 5px 2px;text-transform:uppercase;letter-spacing:.04em}
+  input,textarea,select{width:100%;font-family:var(--sans);font-size:15px;color:var(--ink);background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:12px;margin-bottom:13px}
+  textarea{min-height:60px;resize:vertical}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;font-family:var(--sans);cursor:pointer;color:#fff}
+  .b-nav{background:var(--ink)}.b-blue{background:var(--blue)}.b-go{background:var(--green)}.b-stop{background:var(--red)}
+  .b-ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}.btn-row{display:flex;gap:10px}
+
+  .pick{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .pcard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:15px 13px;cursor:pointer;display:flex;flex-direction:column;gap:11px;min-height:104px}
+  .pcard .pi{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center}
+  .pcard .pi svg{width:21px;height:21px;stroke-width:2;fill:none}
+  .pcard .pl{font-size:14px;font-weight:800;line-height:1.2}.pcard .pd{font-size:11px;color:var(--muted)}
+
+  .ck{display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--line);align-items:flex-start}
+  .ck:first-child{border-top:none}
+  .box{width:22px;height:22px;border-radius:7px;border:2px solid #b9c4cf;flex:none;margin-top:1px;position:relative}
+  .ck.on .box{background:var(--green);border-color:var(--green)}
+  .ck.on .box::after{content:"";position:absolute;left:7px;top:3px;width:6px;height:11px;border:solid #fff;border-width:0 2.5px 2.5px 0;transform:rotate(45deg)}
+  .ck .t{font-size:13.5px;font-weight:600}.ck .r{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px}
+
+  .item{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px;margin-bottom:10px;cursor:pointer}
+  .item .ic{width:38px;height:38px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:12px}
+
+  .banner{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:700;padding:11px 13px;border-radius:12px;margin-bottom:12px}
+  .banner.gate{background:var(--red-bg);color:#8c1c2b}.banner.ok{background:var(--green-bg);color:#0f7a3e}.banner.off{background:var(--amber-bg);color:#7a5800}
+
+  canvas.sig{width:100%;height:140px;background:#fbfcfd;border:1.5px dashed #c2ccd6;border-radius:12px;touch-action:none;display:block}
+
+  .kpis{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:6px}
+  .kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 12px}
+  .kpi .num{font-family:var(--mono);font-size:22px;font-weight:800;line-height:1}
+  .kpi .c2{font-size:10.5px;color:var(--muted);font-weight:600;margin-top:5px}
+  .kpi.blue .num{color:var(--blue)}.kpi.alert .num{color:var(--red)}.kpi.green .num{color:var(--green)}
+
+  .chipset{display:flex;flex-wrap:wrap;gap:8px}
+  .tog{font-size:12px;font-weight:700;border:1.5px solid var(--line);border-radius:10px;padding:8px 12px;cursor:pointer;background:#fff;color:var(--muted)}
+  .tog.on{background:var(--blue-bg);border-color:#bcd3ee;color:#1a4d8f}
+
+  .badge{display:flex;align-items:center;gap:9px;padding:9px 0;border-top:1px solid var(--line)}
+  .badge:first-child{border-top:none}
+  .badge .tk{width:18px;height:18px;border-radius:5px;background:var(--green-bg);display:flex;align-items:center;justify-content:center;flex:none}
+  .badge .tk svg{width:11px;height:11px;stroke:var(--green);stroke-width:3;fill:none}
+  .badge .bt{font-size:12px;font-weight:600}.badge .br{font-family:var(--mono);font-size:9px;color:var(--muted);margin-left:auto}
+
+  .gap{display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-top:1px solid var(--line)}
+  .gap:first-child{border-top:none}
+  .gic{width:24px;height:24px;border-radius:7px;background:var(--amber-bg);color:#7a5800;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+
+  .vstep{position:relative;padding-left:28px;padding-bottom:16px}
+  .vstep .node{position:absolute;left:0;top:1px;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+  .vstep::before{content:"";position:absolute;left:9px;top:21px;bottom:-11px;width:2px;background:var(--line)}
+  .vstep.last::before{display:none}
+  .nd-done{background:var(--green)}.nd-cur{background:var(--blue)}.nd-wait{background:#cdd6df}
+  .vstep .node svg{width:11px;height:11px;stroke:#fff;stroke-width:3;fill:none}
+
+  .qr{width:104px;height:104px;flex:none;background:#fff;border-radius:12px;padding:8px;border:1px solid var(--line)}
+
+  .tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);max-width:480px;width:100%;height:calc(58px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);background:#fff;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-around;z-index:20}
+  .tab{display:flex;flex-direction:column;align-items:center;gap:3px;color:#9aa7b4;font-size:9.5px;font-weight:700;cursor:pointer;flex:1}
+  .tab svg{width:21px;height:21px;stroke:currentColor;stroke-width:2;fill:none}.tab.on{color:var(--blue)}
+  .empty{text-align:center;color:var(--muted);padding:42px 20px}
+  .empty svg{width:44px;height:44px;stroke:#c2ccd6;stroke-width:1.5;fill:none;margin-bottom:12px}
+
+  /* login */
+  .brand{background:linear-gradient(160deg,#1B2E45,#0F1C2B);color:#fff;padding:calc(env(safe-area-inset-top) + 50px) 22px 30px;text-align:center}
+  .logo{width:64px;height:64px;border-radius:18px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);margin:0 auto 14px;display:flex;align-items:center;justify-content:center}
+  .logo svg{width:32px;height:32px;stroke:#fff;stroke-width:1.8;fill:none}
+
+  #print{display:none}
+  @media print{body{max-width:none}body *{visibility:hidden}#print,#print *{visibility:visible}#print{display:block;position:absolute;left:0;top:0;width:100%;padding:24px;font-size:12px;color:#000}@page{margin:14mm}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="print"></div>
+<script>
+/* =========================================================
+   HSSE e-PTW — full permit lifecycle matching the flowchart:
+   Login → Dashboard → Form select → Capture → Compliance →
+   Approval → Active permit control → Closeout → Records
+   Data stored on device. See README to add PocketBase sync.
+========================================================= */
+
+const GENERAL=[
+ ["Approved PTW & JSA displayed and reviewed by crew","ISO 45001 8.1"],
+ ["Toolbox talk conducted; attendance recorded","ISO 45001 7.4"],
+ ["Workers competent, authorised & medically fit","OSHA / DOSH"],
+ ["Permit within valid date/time window","PTW procedure"],
+ ["SIMOPS / conflicting-activity check — no clash","IOGP"],
+ ["Required isolations in place and certified","OSHA 1910.147"],
+ ["Correct PPE available, inspected and worn","OSHA 1910.132"],
+ ["Emergency response & muster point known","ISO 45001 8.2"],
+];
+const TYPES={
+ WAH:{name:"Working at Height",code:"WH",color:"#C5283D",desc:"Scaffold, MEWP, rope",icon:'<path d="M12 3v18M12 3l4 4M12 3L8 7M5 21h14"/>',
+  spec:[["Access via tagged scaffold / approved platform","OSHA 1926 Subpart L"],["Valid green scaffold tag (≤7 days)","OSHA 1926.451(f)(3)"],["Erected by competent scaffolder","OSHA 1926.454"],["Built to approved design & load class","OSHA 1926.451(a)"],["Guardrails, mid-rails & toe boards fitted","OSHA 1926.451(g)"],["Full-body harness + lanyard inspected","OSHA 1926.502(d)"],["100% tie-off to anchor ≥22 kN","OSHA 1926.502(d)(15)"],["Drop zone barricaded; tools tethered","ISO 45001 8.1"],["Rescue plan + kit on site","ANSI Z359"]]},
+ HOT:{name:"Hot Work",code:"HW",color:"#B8820A",desc:"Welding, cutting",icon:'<path d="M12 2c1 4-3 5-3 9a3 3 0 0 0 6 0c0-2-1-3-1-3M8 22h8"/>',
+  spec:[["Gas test < 10% LEL recorded","OSHA 1910.252"],["Combustibles cleared within 11 m","NFPA 51B"],["Openings, drains & ducts covered","NFPA 51B"],["Fire watch assigned w/ extinguisher","OSHA 1910.252(a)"],["Extinguisher / blanket / hose ready","OSHA 1910.157"],["Set & flashback arrestors inspected","OSHA 1910.253"],["Fire watch ≥30–60 min after work","NFPA 51B"],["FR clothing, shield & gloves worn","OSHA 1910.252(b)"]]},
+ CSE:{name:"Confined Space Entry",code:"CS",color:"#1F5BA8",desc:"Tanks, vessels, pits",icon:'<rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="12" r="4"/>',
+  spec:[["O₂ 19.5–23.5%, LEL<10%, H₂S<10, CO<35","OSHA 1910.146"],["Continuous gas monitoring","OSHA 1910.146(d)"],["Lines isolated, blinded, LOTO","OSHA 1910.147"],["Forced-air ventilation running","OSHA 1910.146"],["Trained attendant at entry","OSHA 1910.146(i)"],["Entry/exit log; authorised entrants","OSHA 1910.146(e)"],["Rescue team & equipment standby","OSHA 1910.146(k)"],["Two-way communication established","OSHA 1910.146(h)"]]},
+ LOTO:{name:"Lock-out / Tag-out",code:"LO",color:"#B8820A",desc:"Energy isolation",icon:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  spec:[["Energy sources identified","OSHA 1910.147"],["Locks & danger tags applied","OSHA 1910.147(c)"],["Stored energy released/restrained","OSHA 1910.147(d)"],["Zero-energy verified (test b4 touch)","OSHA 1910.333"],["Arc-flash boundary; rated PPE","NFPA 70E"],["Insulated, voltage-rated tools","OSHA 1910.335"],["Isolation certificate issued","Site"],["Authorised electrician only","OSHA 1910.332"]]},
+ EXC:{name:"Excavation",code:"EX",color:"#1E9E5A",desc:"Digging, trenching",icon:'<path d="M3 20h18M6 20l3-8 6 2 3 6M14 6l4-2 2 4"/>',
+  spec:[["Services located; permit-to-dig","OSHA 1926.651(b)"],["Protective system ≥1.5 m","OSHA Subpart P"],["Soil classified by competent person","OSHA 1926.652"],["Spoil ≥0.6 m from edge","OSHA 1926.651(j)"],["Egress within 7.6 m","OSHA 1926.651(c)"],["Edges barricaded & signed","OSHA 1926.651(k)"],["Atmospheric test where needed","OSHA 1926.651(g)"],["Daily competent-person check","OSHA 1926.651(k)"]]},
+ LIFT:{name:"Lifting Operations",code:"LF",color:"#1E9E5A",desc:"Crane, hoist, rig",icon:'<path d="M4 21h16M6 21V5l13 2M6 5l8-2M14 7v4M14 11h4"/>',
+  spec:[["Lift plan available & briefed","OSHA 1926.1400"],["Crane cert & load chart","OSHA 1926.1412"],["Rigging inspected, SWL marked","ASME B30.9"],["Operator/rigger/banksman certified","OSHA 1926.1427"],["Outriggers on mats; ground OK","OSHA 1926.1402"],["Load weight within SWL","ASME B30"],["Tag lines; none under load","OSHA 1926.1425"],["Wind within crane limits","OSHA 1926.1431"]]},
+};
+const CONTROLS=["Area barricaded","PPE issued & worn","Standby person","Gas test done","Isolation applied","Tools inspected"];
+const STANDARDS=["ISO 45001 — OH&S","ISO 14001 — Environmental","OSHA 1994 + DOSH","EQA 1974","IOGP field practice"];
+const CLOSEOUT=["Work complete & area made safe","Equipment / scaffold removed","Housekeeping done; no waste left","Isolations restored / normalised"];
+const itemsFor=t=>GENERAL.concat(TYPES[t].spec);
+const VALID_H=8;
+
+/* storage */
+const PKEY='hsse_permits_v3', UKEY='hsse_user_v1', OKEY='hsse_obs_v1';
+const load=()=>{try{return JSON.parse(localStorage.getItem(PKEY))||[]}catch(e){return[]}};
+const save=()=>{try{localStorage.setItem(PKEY,JSON.stringify(permits))}catch(e){} pushSync('permits',permits);};
+const loadObs=()=>{try{return JSON.parse(localStorage.getItem(OKEY))||[]}catch(e){return[]}};
+const saveObs=()=>{try{localStorage.setItem(OKEY,JSON.stringify(observations))}catch(e){alert('Storage full — delete old reports or photos.');} pushSync('observations',observations);};
+
+/* ---- server sync (Cloudflare Worker + D1) — best-effort, offline-safe.
+   Writes go through localStorage first (instant, works offline), then get
+   pushed to /api/* so other devices can see them. Pulls on load merge in
+   anything created elsewhere, with this device's copy winning on conflict. */
+const syncTimers={};
+function pushSync(kind,items){
+  clearTimeout(syncTimers[kind]);
+  syncTimers[kind]=setTimeout(()=>{
+    fetch('/api/'+kind+'/bulk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})}).catch(()=>{});
+  },700);
+}
+function mergeById(local,remote){
+  const map=new Map(remote.map(x=>[x.id,x]));
+  local.forEach(x=>map.set(x.id,x));
+  return Array.from(map.values());
+}
+async function pullSync(){
+  try{
+    const [rp,ro]=await Promise.all([fetch('/api/permits'),fetch('/api/observations')]);
+    if(rp.ok){const remote=await rp.json();permits=mergeById(permits,remote);try{localStorage.setItem(PKEY,JSON.stringify(permits))}catch(e){}}
+    if(ro.ok){const remote=await ro.json();observations=mergeById(observations,remote);try{localStorage.setItem(OKEY,JSON.stringify(observations))}catch(e){}}
+    render();
+  }catch(e){/* offline — keep working from localStorage */}
+}
+window.addEventListener('online',()=>{pushSync('permits',permits);pushSync('observations',observations);pullSync();});
+
+let permits=load(), observations=loadObs(), user=null, reportCtx={pid:null}, draftPhoto=null;
+permits.forEach(p=>{if(!p.reports)p.reports=[];if(p.flagged===undefined)p.flagged=false;
+  if(p.revokeReason===undefined){p.revokedBy=null;p.revokedAt=null;p.revokeReason=null;}
+  if(p.competency===undefined)p.competency='';if(!p.gas)p.gas={o2:'',lel:'',h2s:'',co:'',attendant:'',rescue:false};if(!p.revalidations)p.revalidations=[];});
+try{user=JSON.parse(localStorage.getItem(UKEY)||'null')}catch(e){}
+/* resize a chosen photo to keep storage small, then keep as JPEG data URL */
+function readPhoto(file,cb){if(!file){cb(null);return;}const fr=new FileReader();
+  fr.onload=()=>{const img=new Image();img.onload=()=>{const max=1024;let w=img.width,h=img.height;
+    if(w>h&&w>max){h=Math.round(h*max/w);w=max;}else if(h>=w&&h>max){w=Math.round(w*max/h);h=max;}
+    const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);
+    try{cb(c.toDataURL('image/jpeg',0.6));}catch(e){cb(null);}};img.onerror=()=>cb(null);img.src=fr.result;};
+  fr.onerror=()=>cb(null);fr.readAsDataURL(file);}
+let state={screen:user?'dashboard':'login',pid:null};
+let timer=null;
+
+/* helpers */
+const $=s=>document.querySelector(s);
+const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+function P(){return permits.find(p=>p.id===state.pid);}
+function uid(){return 'PTW-'+String(Math.floor(1000+Math.random()*8999));}
+function riskBand(s){if(s>=15)return['High','c-stop'];if(s>=8)return['Medium','c-warn'];return['Low','c-go'];}
+function fmt(ts){return ts?new Date(ts).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'—';}
+function go(s,pid){if(timer){clearInterval(timer);timer=null;}stopCam();state.screen=s;if(pid!==undefined)state.pid=pid;render();}
+function openPermit(id){const p=permits.find(x=>x.id===id);state.pid=id;
+  const r={draft:'compliance',compliance:'compliance',pending:'approval',issued:'permit',active:'permit',closed:'permit',revoked:'permit'}[p.status];
+  go(r);}
+const STAT={draft:['Draft','c-warn'],compliance:['Check','c-warn'],pending:['In approval','c-active'],issued:['Issued','c-active'],active:['Active','c-go'],closed:['Closed','c-mut'],revoked:['Revoked','c-stop']};
+function isSafety(){return !!user && ['HSSE Officer','Area Authority','Admin'].includes(user.role);}
+let pendingAsset='';
+
+/* faux QR (offline, deterministic) */
+function fauxQR(text){let h=0;for(const c of text)h=(Math.imul(h,31)+c.charCodeAt(0))>>>0;
+  const N=21,cl=100/N;let r='';const f=(x,y)=>`<rect x="${x*cl}" y="${y*cl}" width="${7*cl}" height="${7*cl}"/><rect x="${(x+1)*cl}" y="${(y+1)*cl}" width="${5*cl}" height="${5*cl}" fill="#fff"/><rect x="${(x+2)*cl}" y="${(y+2)*cl}" width="${3*cl}" height="${3*cl}"/>`;
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){if((x<8&&y<8)||(x>N-9&&y<8)||(x<8&&y>N-9))continue;h=(Math.imul(h,1103515245)+12345)>>>0;if((h>>>16)&1)r+=`<rect x="${x*cl}" y="${y*cl}" width="${cl}" height="${cl}"/>`;}
+  return `<svg viewBox="0 0 100 100" width="100%" height="100%" fill="#16263A">${r}${f(0,0)}${f(N-7,0)}${f(0,N-7)}</svg>`;}
+
+/* ================= SCREENS ================= */
+function appbar(title,sub,opt={}){const cls=opt.cls?' '+opt.cls:'';
+  const back=opt.backFn?`<button class="back" onclick="${opt.backFn}">‹</button>`:(opt.back?`<button class="back" onclick="go('${opt.back}')">‹</button>`:'');
+  return `<div class="appbar${cls}">${back}
+    <div><div class="ttl">${title}</div>${sub?`<div class="sub">${sub}</div>`:''}</div>
+    <div class="spacer"></div>${opt.right||''}</div>`;}
+function reopen(){openPermit(state.pid);}
+function tabbar(active){const tab=(id,scr,lbl,svg)=>`<div class="tab ${active===id?'on':''}" onclick="go('${scr}')"><svg viewBox="0 0 24 24">${svg}</svg>${lbl}</div>`;
+  return `<div class="tabbar">
+    ${tab('home','dashboard','Home','<path d="M3 11l9-8 9 8M5 10v10h14V10"/>')}
+    ${tab('scan','scanner','Scan','<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h3v3M20 14v6M17 20h3"/>')}
+    ${tab('new','picker','New','<path d="M12 5v14M5 12h14"/>')}
+    ${tab('rep','reports','Reports','<path d="M4 19V9M10 19V4M16 19v-7M22 19H2"/>')}
+  </div>`;}
+
+const ROLE_PW={'Worker / Applicant':'worker123','Supervisor':'supervisor123','HSSE Officer':'hsse123','Area Authority':'area123','Admin':'admin123'};
+function loginScreen(){return `
+  <div class="brand"><div class="logo"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M9 12l2 2 4-4"/></svg></div>
+    <div class="h1">HSSE e-PTW</div><div class="sm" style="color:rgba(255,255,255,.6);margin-top:3px">Permit to Work · field safety</div></div>
+  <div class="body">
+    <label class="fl">Your name</label><input id="lname" placeholder="e.g. Faizal A." value="">
+    <label class="fl">Role</label>
+    <select id="lrole">
+      <option>Worker / Applicant</option><option>Supervisor</option><option>HSSE Officer</option><option selected>Area Authority</option><option>Admin</option>
+    </select>
+    <label class="fl">Password</label>
+    <input id="lpw" type="password" placeholder="Role password" onkeydown="if(event.key==='Enter')doLogin()">
+    <div id="lerr" class="banner gate" style="display:none">Wrong password for this role.</div>
+    <button class="btn b-nav" onclick="doLogin()">Log in</button>
+    <div class="row between" style="margin-top:14px"><span class="tag"><span class="d"></span>ID verified</span><span class="chip c-go"><span class="d"></span>Offline ready</span></div>
+    <div class="xs mut" style="text-align:center;margin-top:14px">Role-based access · runs offline on this phone</div>
+  </div>`;}
+function doLogin(){const n=$('#lname').value.trim()||'User';const r=$('#lrole').value;
+  const pw=$('#lpw')?$('#lpw').value:'';
+  if(pw!==ROLE_PW[r]){const e=$('#lerr');if(e){e.style.display='flex';e.textContent='⚠ Wrong password for '+r+'.';}return;}
+  user={name:n,role:r,id:'EMP-'+Math.floor(1000+Math.random()*8999)};
+  try{localStorage.setItem(UKEY,JSON.stringify(user))}catch(e){}
+  go('dashboard');}
+function logout(){user=null;try{localStorage.removeItem(UKEY)}catch(e){}go('login');}
+
+function dashboard(){
+  const active=permits.filter(p=>p.status==='active').length;
+  const pend=permits.filter(p=>p.status==='pending').length;
+  const today=permits.filter(p=>p.issuedAt&&new Date(p.issuedAt).toDateString()===new Date().toDateString()).length;
+  const closed=permits.filter(p=>p.status==='closed').length;
+  const list=permits.slice().reverse();
+  const card=p=>{const T=TYPES[p.type],st=STAT[p.status];return `<div class="item" onclick="openPermit('${p.id}')">
+    <div class="ic" style="background:${T.color}">${T.code}</div>
+    <div style="flex:1"><div class="h2 sm">${T.name}</div><div class="xs mut readout">${p.no} · ${esc(p.asset)||'—'}</div></div>
+    <span class="chip ${st[1]}"><span class="d"></span>${st[0]}</span></div>`;};
+  const pending=list.filter(p=>p.status==='pending');
+  const openObs=observations.filter(o=>o.status==='open').slice().reverse();
+  const obsCard=o=>{const sevCls=o.severity.indexOf('Imminent')>=0?'c-stop':(o.severity.indexOf('Unsafe')>=0?'c-warn':'c-mut');
+    return `<div class="item" onclick="obsDetail('${o.id}')">
+      ${o.photo?`<img src="${o.photo}" style="width:42px;height:42px;border-radius:10px;object-fit:cover;flex:none">`:`<div class="ic" style="background:var(--red)">!</div>`}
+      <div style="flex:1"><div class="h2 sm" style="line-height:1.25">${esc(o.desc.length>54?o.desc.slice(0,54)+'…':o.desc)}</div>
+        <div class="xs mut readout">${esc(o.by)} · ${o.permitNo||o.location||'site'} · ${fmt(o.at)}</div></div>
+      <span class="chip ${sevCls}"><span class="d"></span>${o.severity.split(' ')[0]}</span></div>`;};
+  return appbar('Hi, '+esc(user.name.split(' ')[0]), user.role+' · '+user.id,{right:`<span class="tag" onclick="logout()" style="cursor:pointer"><span class="d"></span>${user.id}</span>`})
+   +`<div class="body">
+      <div class="kpis">
+        <div class="kpi blue"><div class="num">${active}</div><div class="c2">Active permits</div></div>
+        <div class="kpi"><div class="num">${pend}</div><div class="c2">Awaiting approval</div></div>
+        <div class="kpi green"><div class="num">${today}</div><div class="c2">Issued today</div></div>
+        <div class="kpi ${openObs.length?'alert':''}"><div class="num">${openObs.length}</div><div class="c2">Open unsafe reports</div></div>
+      </div>
+      <button class="btn b-stop" onclick="reportUnsafe()" style="margin-bottom:6px"><svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:#fff;stroke-width:2;fill:none"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Report unsafe practice</button>
+      ${isSafety()&&openObs.length?`<div class="sect">Unsafe reports — inbox</div>${openObs.map(obsCard).join('')}`:''}
+      ${pending.length?`<div class="sect">Pending your approval</div>${pending.map(card).join('')}`:''}
+      <div class="sect">All permits</div>
+      ${list.length?list.map(card).join(''):'<div class="empty"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/></svg><div>No permits yet. Tap “New”.</div></div>'}
+    </div>`+tabbar('home');}
+
+function picker(){return appbar('New Permit','Choose the type of work',{back:'dashboard'})
+  +`<div class="body"><div class="pick">${Object.keys(TYPES).map(t=>{const T=TYPES[t];
+    return `<div class="pcard" onclick="pickType('${t}')"><div class="pi" style="background:${T.color}1a"><svg viewBox="0 0 24 24" style="stroke:${T.color}">${T.icon}</svg></div>
+    <div><div class="pl">${T.name}</div><div class="pd">${T.desc}</div></div></div>`;}).join('')}</div></div>`+tabbar('new');}
+function pickType(t){const p={id:'p'+Date.now(),no:uid(),type:t,status:'draft',location:null,asset:pendingAsset||'',desc:'',
+  applicant:user.name,risk:{l:3,s:3,score:9},controls:[],compliance:null,
+  approvals:{Supervisor:null,'HSSE Officer':null,'Area Authority':null},
+  prework:itemsFor(t).map(()=>false),simops:'clear',issuingSig:null,closeoutSig:null,closeout:CLOSEOUT.map(()=>false),
+  reports:[],flagged:false,revokedBy:null,revokedAt:null,revokeReason:null,
+  competency:'',gas:{o2:'',lel:'',h2s:'',co:'',attendant:'',rescue:false},revalidations:[],
+  createdAt:Date.now(),submittedAt:null,issuedAt:null,activatedAt:null,closedAt:null};
+  pendingAsset='';permits.push(p);save();state.pid=p.id;go('capture');}
+
+function capture(){const p=P(),T=TYPES[p.type],rb=riskBand(p.risk.score);
+  return appbar('Capture — '+T.name,'Smart data capture',{back:'picker'})
+  +`<div class="body">
+    <div class="card">
+      <label class="fl">Work location (GPS tag)</label>
+      <div class="row between" style="margin-bottom:13px"><span class="tag" id="gpsTag"><span class="d"></span>${p.location?p.location.lat+', '+p.location.lng:'Not captured'}</span>
+        <button class="b-ghost btn" style="width:auto;padding:9px 14px;font-size:12px" onclick="captureGPS()">Capture GPS</button></div>
+      <label class="fl">Asset / area ID</label><input id="asset" value="${esc(p.asset)}" placeholder="e.g. Hangar 3 — Bay 12">
+      <label class="fl">Description of work</label><textarea id="desc" placeholder="Scope of work…">${esc(p.desc)}</textarea>
+      <label class="fl">Applicant</label><input id="applicant" value="${esc(p.applicant)}">
+    </div>
+    <div class="card"><div class="sect" style="margin-top:0">Risk — likelihood × severity</div>
+      <div class="grid2"><div><label class="fl">Likelihood</label><select id="lk">${[1,2,3,4,5].map(n=>`<option ${p.risk.l===n?'selected':''}>${n}</option>`).join('')}</select></div>
+        <div><label class="fl">Severity</label><select id="sv">${[1,2,3,4,5].map(n=>`<option ${p.risk.s===n?'selected':''}>${n}</option>`).join('')}</select></div></div>
+      <div class="row between"><span class="lbl">Risk score</span><span id="riskOut" class="chip ${rb[1]}"><span class="d"></span>${rb[0]} · ${p.risk.score}</span></div>
+    </div>
+    <div class="card"><div class="sect" style="margin-top:0">Control measures in place</div>
+      <div class="chipset">${CONTROLS.map(c=>`<div class="tog ${p.controls.includes(c)?'on':''}" onclick="toggleControl('${c}')">${c}</div>`).join('')}</div></div>
+    <div class="card"><div class="sect" style="margin-top:0">Competency / training records</div>
+      <label class="fl">Competent persons + certificate refs</label>
+      <textarea id="comp" placeholder="e.g. Scaffolder CIDB #1234 (exp 2027); AGT cert #88; LOTO authorised — R.Tan">${esc(p.competency||'')}</textarea>
+      <div class="xs mut">Required: named competent persons and valid certificates for this task.</div></div>
+    ${p.type==='CSE'?`<div class="card"><div class="sect" style="margin-top:0">Atmosphere — gas test log</div>
+      <div class="grid2">
+        <div><label class="fl">O₂ %</label><input id="g_o2" value="${esc(p.gas.o2)}" placeholder="19.5–23.5"></div>
+        <div><label class="fl">LEL %</label><input id="g_lel" value="${esc(p.gas.lel)}" placeholder="&lt;10"></div>
+        <div><label class="fl">H₂S ppm</label><input id="g_h2s" value="${esc(p.gas.h2s)}" placeholder="&lt;10"></div>
+        <div><label class="fl">CO ppm</label><input id="g_co" value="${esc(p.gas.co)}" placeholder="&lt;35"></div>
+      </div>
+      <label class="fl">Attendant (hole watch)</label><input id="g_att" value="${esc(p.gas.attendant)}" placeholder="Name of standby attendant">
+      <div class="tog ${p.gas.rescue?'on':''}" onclick="toggleRescue()" style="margin-top:4px">Rescue plan + team on standby</div></div>`:''}
+    <button class="btn b-nav" onclick="toCompliance()">Run compliance check →</button>
+  </div>`;}
+function captureGPS(){const t=$('#gpsTag'),p=P();t.innerHTML='<span class="d"></span>Locating…';
+  const set=g=>{p.location=g;save();t.innerHTML=`<span class="d"></span>${g.lat}, ${g.lng}`;};
+  if(!navigator.geolocation)return set({lat:3.1390,lng:101.6869});
+  navigator.geolocation.getCurrentPosition(x=>set({lat:+x.coords.latitude.toFixed(5),lng:+x.coords.longitude.toFixed(5)}),()=>set({lat:3.1390,lng:101.6869}));}
+function toggleControl(c){const p=P();grabCapture();const i=p.controls.indexOf(c);if(i<0)p.controls.push(c);else p.controls.splice(i,1);save();render();}
+function toggleRescue(){const p=P();grabCapture();p.gas.rescue=!p.gas.rescue;save();render();}
+function syncRisk(){const p=P();const lk=+$('#lk').value,sv=+$('#sv').value;p.risk={l:lk,s:sv,score:lk*sv};
+  const rb=riskBand(p.risk.score);$('#riskOut').className='chip '+rb[1];$('#riskOut').innerHTML=`<span class="d"></span>${rb[0]} · ${p.risk.score}`;}
+function grabCapture(){const p=P();p.asset=$('#asset').value.trim();p.desc=$('#desc').value.trim();p.applicant=$('#applicant').value.trim()||user.name;
+  p.risk.l=+$('#lk').value;p.risk.s=+$('#sv').value;p.risk.score=p.risk.l*p.risk.s;
+  if($('#comp'))p.competency=$('#comp').value.trim();
+  if(p.type==='CSE'&&$('#g_o2')){p.gas.o2=$('#g_o2').value.trim();p.gas.lel=$('#g_lel').value.trim();p.gas.h2s=$('#g_h2s').value.trim();p.gas.co=$('#g_co').value.trim();p.gas.attendant=$('#g_att').value.trim();}
+  save();}
+function toCompliance(){grabCapture();const p=P();const gaps=[];
+  if(!p.location)gaps.push('GPS location not captured');
+  if(!p.asset)gaps.push('Asset / area not specified');
+  if(!p.applicant||p.applicant==='—')gaps.push('Applicant not named');
+  if(p.controls.length<2)gaps.push('Select at least 2 control measures');
+  if(!p.competency)gaps.push('Competency / certificates not recorded');
+  if(p.type==='CSE'){const g=p.gas,n=v=>parseFloat(v);
+    if(g.o2===''||g.lel===''||g.h2s===''||g.co==='')gaps.push('Gas test readings incomplete (O₂/LEL/H₂S/CO)');
+    else{if(n(g.o2)<19.5||n(g.o2)>23.5)gaps.push('O₂ outside 19.5–23.5%');
+      if(n(g.lel)>=10)gaps.push('LEL ≥ 10% — not safe to enter');
+      if(n(g.h2s)>=10)gaps.push('H₂S ≥ 10 ppm');
+      if(n(g.co)>=35)gaps.push('CO ≥ 35 ppm');}
+    if(!g.attendant)gaps.push('Confined-space attendant not named');
+    if(!g.rescue)gaps.push('Rescue plan / team not confirmed');}
+  p.compliance={passed:gaps.length===0,gaps};p.status='compliance';save();go('compliance');}
+
+function compliance(){const p=P(),c=p.compliance,pass=c.passed;
+  let h=appbar('Compliance Check', pass?'Validated':'Action needed',{back:'capture',cls:pass?'green':'red'})+`<div class="body">`;
+  if(pass){h+=`<div class="card" style="background:var(--green-bg);border-color:#b6e3c8;text-align:center">
+      <div style="width:52px;height:52px;border-radius:50%;background:#fff;margin:4px auto 8px;display:flex;align-items:center;justify-content:center">
+        <svg viewBox="0 0 24 24" style="width:26px;height:26px;stroke:var(--green);stroke-width:3;fill:none"><path d="M5 12l4 4L19 7"/></svg></div>
+      <div class="h1" style="color:#0f7a3e">Compliant</div><div class="sm" style="color:#0f7a3e">All required data present</div></div>
+      <div class="sect">Checked against</div><div class="card">${STANDARDS.map(s=>`<div class="badge"><div class="tk"><svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 7"/></svg></div><div class="bt">${s}</div></div>`).join('')}</div>
+      <button class="btn b-nav" onclick="submitApproval()">Submit for approval</button>`;
+  }else{h+=`<div class="banner gate">⚠ ${c.gaps.length} item(s) must be fixed before submission</div>
+      <div class="sect">Gaps to fix</div><div class="card">${c.gaps.map(g=>`<div class="gap"><div class="gic">!</div><div class="bt sm" style="font-weight:600">${g}</div></div>`).join('')}</div>
+      <button class="btn b-nav" onclick="go('capture')">← Back to capture</button>`;}
+  return h+`</div>`;}
+function submitApproval(){const p=P();p.status='pending';p.submittedAt=Date.now();save();go('approval');}
+
+function approval(){const p=P(),T=TYPES[p.type],roles=Object.keys(p.approvals);
+  const nextRole=roles.find(r=>!p.approvals[r]);
+  let chain='';roles.forEach((r,i)=>{const a=p.approvals[r];const cls=a?'nd-done':(r===nextRole?'nd-cur':'nd-wait');
+    chain+=`<div class="vstep ${i===roles.length-1?'last':''}"><div class="node ${cls}">${a?'<svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 7"/></svg>':''}</div>
+      <div class="h2 sm">${r}</div><div class="xs mut">${a?('Approved · '+esc(a.by)+' · '+fmt(a.at)):(r===nextRole?'Awaiting sign-off':'Pending')}</div></div>`;});
+  let h=appbar('Approval', p.no+' · '+T.name,{back:'dashboard'})+`<div class="body">
+    <div class="card"><div class="row between"><div><div class="h2 sm">${T.name}</div><div class="xs mut">Applicant · ${esc(p.applicant)}</div></div>
+      <span class="chip ${riskBand(p.risk.score)[1]}"><span class="d"></span>${riskBand(p.risk.score)[0]} risk</span></div></div>
+    <div class="sect">Approval chain</div><div class="card">${chain}</div>`;
+  if(nextRole){
+    if(p.flagged){const last=p.reports[p.reports.length-1];
+      h+=`<div class="banner gate">⚠ STOP — unsafe condition reported${last?': '+esc(last.desc):''}</div>`;}
+    h+=`<div class="banner off">Next sign-off: <b>&nbsp;${nextRole}</b></div>
+    <div class="btn-row"><button class="btn b-stop" style="flex:.7" onclick="returnPermit()">Return</button>
+      <button class="btn b-go" ${p.flagged?'disabled':''} onclick="approveStep()">Approve as ${nextRole}</button></div>
+    <div class="xs mut" style="text-align:center;margin-top:9px">Signing as ${esc(user.name)} (${esc(user.role)})</div>`;
+  }else{h+=`<div class="banner ok">✓ Fully approved — digital permit issued</div><button class="btn b-blue" onclick="go('permit')">Open active permit →</button>`;}
+  // safety actions — available on every permit awaiting/under approval
+  h+=`<div class="sect">Safety actions</div>`;
+  h+=`<button class="btn b-ghost" onclick="gotoReport()" style="margin-bottom:10px;color:#a31e30;border-color:#f1bcc4">⚠ Report unsafe condition</button>`;
+  if(isSafety())h+=`<button class="btn b-stop" onclick="gotoRevoke()">Revoke permit (HSSE)</button>`;
+  return h+`</div>`;}
+function approveStep(){const p=P();const r=Object.keys(p.approvals).find(x=>!p.approvals[x]);if(!r)return;
+  p.approvals[r]={by:user.name,at:Date.now()};
+  if(Object.values(p.approvals).every(Boolean)){p.status='issued';p.issuedAt=Date.now();}
+  save();render();}
+function returnPermit(){if(!confirm('Return this permit to the applicant?'))return;const p=P();
+  p.status='draft';p.approvals={Supervisor:null,'HSSE Officer':null,'Area Authority':null};p.compliance=null;save();go('dashboard');}
+
+function permit(){const p=P(),T=TYPES[p.type],items=itemsFor(p.type),genN=GENERAL.length;
+  const issued=p.status==='issued',active=p.status==='active',closed=p.status==='closed',revoked=p.status==='revoked';
+  const done=p.prework.filter(Boolean).length,ready=done===items.length && !p.flagged;
+  const barCls=revoked?'red':(active?'blue':'');
+  let h=appbar(T.name, p.no,{back:'dashboard',cls:barCls,right:`<span class="chip ${STAT[p.status][1]}" style="${active?'background:rgba(255,255,255,.18);color:#fff':''}"><span class="d"></span>${STAT[p.status][0]}</span>`})+`<div class="body">`;
+  // QR + timer
+  h+=`<div class="card" style="display:flex;gap:13px;align-items:center"><div class="qr">${fauxQR(p.no)}</div>
+    <div style="flex:1"><div class="lbl">Permit no.</div><div class="readout h2" style="margin-bottom:8px">${p.no}</div>
+    <div class="lbl">${revoked?'Status':'Valid for'}</div>${revoked?`<div class="readout h1" style="color:var(--red)">REVOKED</div>`:`<div class="readout h1" id="timer" style="color:var(--blue)">—</div>`}</div></div>`;
+
+  // revoked banner
+  if(revoked){h+=`<div class="card" style="background:var(--red-bg);border-color:#f1bcc4">
+      <div class="row"><svg viewBox="0 0 24 24" style="width:26px;height:26px;flex:none;stroke:var(--red);stroke-width:2;fill:none"><circle cx="12" cy="12" r="9"/><path d="M8 8l8 8M16 8l-8 8"/></svg>
+        <div><div class="h2" style="color:#a31e30">Permit revoked</div><div class="xs mut">by ${esc(p.revokedBy)} · ${fmt(p.revokedAt)}</div></div></div>
+      <div style="margin-top:10px;border-top:1px solid #f1bcc4;padding-top:10px" class="sm"><b>Reason:</b> ${esc(p.revokeReason)}</div></div>`;}
+
+  // open unsafe-condition flag
+  if(p.flagged && !revoked){const last=p.reports[p.reports.length-1];
+    h+=`<div class="card" style="background:var(--red-bg);border-color:#f1bcc4">
+      <div class="row"><svg viewBox="0 0 24 24" style="width:24px;height:24px;flex:none;stroke:var(--red);stroke-width:2;fill:none"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        <div style="flex:1"><div class="h2 sm" style="color:#a31e30">STOP — unsafe condition reported</div><div class="xs mut">${esc(last.by)} (${esc(last.role)}) · ${fmt(last.at)} · ${last.severity}</div></div></div>
+      <div style="margin-top:8px" class="sm">${esc(last.desc)}</div>
+      ${isSafety()?`<div class="btn-row" style="margin-top:11px"><button class="b-ghost btn" onclick="resolveFlag()">Resolve</button><button class="btn b-stop" onclick="gotoRevoke()">Revoke permit</button></div>`:`<div class="xs mut" style="margin-top:9px">A safety officer must review and clear or revoke this permit.</div>`}</div>`;}
+
+  if(!closed && !revoked){
+    h+=`<div class="row between" style="margin:2px 0 8px"><span class="sect" style="margin:0">Pre-work verification</span>
+      <span class="chip ${p.simops==='clear'?'c-go':'c-stop'}"><span class="d"></span>SIMOPS ${p.simops}</span></div>`;
+    h+=`<div class="card" style="padding:6px 14px">`;
+    items.forEach((c,i)=>{if(i===genN)h+=`</div><div class="sect">${T.name} — specific</div><div class="card" style="padding:6px 14px">`;
+      const edit=issued && !p.flagged; h+=`<div class="ck ${p.prework[i]?'on':''}" ${edit?`onclick="togglePre(${i})"`:'style="cursor:default"'}><div class="box"></div><div><div class="t">${c[0]}</div><div class="r">${c[1]}</div></div></div>`;});
+    h+=`</div>`;
+    if(issued){h+=`<div class="banner ${ready?'ok':'gate'}">${p.flagged?'⚠ Blocked — unsafe condition open':(ready?'✓ All checks done — work may begin':'⚠ Work cannot begin until all items verified ('+done+'/'+items.length+')')}</div>
+      <div class="btn-row"><button class="btn b-stop" style="flex:.7" onclick="suspend()">Suspend</button>
+      <button class="btn b-go" ${ready?'':'disabled'} onclick="startWork()">Start work</button></div>`;}
+    if(active){h+=`<div class="banner ${p.flagged?'gate':'ok'}">${p.flagged?'⚠ Unsafe condition open — resolve before continuing':'● Work in progress'}</div>`;
+      // per-shift revalidation
+      const lastRev=p.revalidations[p.revalidations.length-1];
+      h+=`<div class="card"><div class="row between"><div><div class="h2 sm">Per-shift revalidation</div><div class="xs mut">${lastRev?('Last: '+esc(lastRev.by)+' · '+fmt(lastRev.at)):'Not yet revalidated this permit'}</div></div>
+        <button class="b-ghost btn" style="width:auto;padding:9px 13px;font-size:12px;${p.flagged?'opacity:.45':''}" ${p.flagged?'disabled':''} onclick="revalidate()">Revalidate shift</button></div></div>`;
+      h+=`<button class="btn b-nav" ${p.flagged?'disabled':''} onclick="go('closeout')">Work complete → closeout</button>`;}
+    // action buttons: report (everyone) + revoke (safety officers)
+    h+=`<div class="sect">Actions</div>`;
+    h+=`<button class="btn b-ghost" onclick="gotoReport()" style="margin-bottom:10px;color:#a31e30;border-color:#f1bcc4"><svg viewBox="0 0 24 24" style="width:17px;height:17px;stroke:var(--red);stroke-width:2;fill:none"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Report unsafe condition</button>`;
+    if(isSafety())h+=`<button class="btn b-stop" onclick="gotoRevoke()" style="margin-bottom:10px">Revoke permit (HSSE)</button>`;
+  }else if(closed){
+    h+=`<div class="sect">Closeout sign-off</div><div class="card" style="padding:6px 14px">${CLOSEOUT.map(c=>`<div class="ck on"><div class="box"></div><div class="t">${c}</div></div>`).join('')}</div>
+      <div class="card"><div class="row between"><span class="lbl">Activated</span><span class="readout sm">${fmt(p.activatedAt)}</span></div>
+        <div class="row between" style="margin-top:8px"><span class="lbl">Closed</span><span class="readout sm">${fmt(p.closedAt)}</span></div></div>`;
+  }
+  // competency + gas + revalidation records
+  if(p.competency){h+=`<div class="sect">Competency / training</div><div class="card sm">${esc(p.competency)}</div>`;}
+  if(p.type==='CSE'&&p.gas&&p.gas.o2!==''){h+=`<div class="sect">Atmosphere — gas test</div><div class="card">
+    <div class="row wrap" style="gap:7px"><span class="tag"><span class="d"></span>O₂ ${esc(p.gas.o2)}%</span><span class="tag"><span class="d"></span>LEL ${esc(p.gas.lel)}%</span><span class="tag"><span class="d"></span>H₂S ${esc(p.gas.h2s)}</span><span class="tag"><span class="d"></span>CO ${esc(p.gas.co)}</span></div>
+    <div class="row between" style="margin-top:10px"><span class="lbl">Attendant</span><span class="val sm">${esc(p.gas.attendant)||'—'}</span></div>
+    <div class="row between" style="margin-top:6px"><span class="lbl">Rescue plan</span><span class="chip ${p.gas.rescue?'c-go':'c-stop'}"><span class="d"></span>${p.gas.rescue?'Confirmed':'No'}</span></div></div>`;}
+  if(p.revalidations&&p.revalidations.length){h+=`<div class="sect">Revalidation / shift log</div><div class="card">${p.revalidations.map(r=>`<div class="badge"><div class="tk"><svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 7"/></svg></div><div><div class="bt sm">${esc(r.note)}</div><div class="xs mut readout">${esc(r.by)} · ${fmt(r.at)}</div></div></div>`).join('')}</div>`;}
+  // history of reports
+  if(p.reports.length){h+=`<div class="sect">Unsafe-condition log</div><div class="card">${p.reports.map(r=>`<div class="badge" style="align-items:flex-start"><div class="tk" style="background:var(--red-bg)"><svg viewBox="0 0 24 24" style="stroke:var(--red)"><path d="M12 9v6M12 4l-1 0"/></svg></div><div style="flex:1"><div class="bt sm">${esc(r.desc)}</div><div class="xs mut readout">${esc(r.by)} · ${r.severity} · ${fmt(r.at)}</div>${r.photo?`<img src="${r.photo}" style="width:100%;max-height:200px;object-fit:cover;border-radius:10px;margin-top:7px">`:''}</div></div>`).join('')}</div>`;}
+  h+=`<button class="btn b-ghost" onclick="exportPDF()" style="margin-top:6px">Export PDF</button></div>`;
+  return h;}
+
+/* ---- unsafe report: any role, with photo, routed to safety officers ---- */
+function gotoReport(){reportCtx={pid:state.pid};draftPhoto=null;go('report');}      // from a permit/approval
+function reportUnsafe(){reportCtx={pid:null};draftPhoto=null;go('report');}          // standalone, from dashboard
+function reportScreen(){const p=reportCtx.pid?permits.find(x=>x.id===reportCtx.pid):null;
+  const sub=p?(p.no+' · '+TYPES[p.type].name):'Standalone site observation';
+  return appbar('Report unsafe practice',sub,{backFn:p?'reopen()':"go('dashboard')",cls:'red'})+`<div class="body">
+    <div class="banner off">Any worker can raise this. It is sent to the HSSE officer and above.${p?' Filing flags this permit (STOP).':''}</div>
+    <label class="fl">What is unsafe? (required)</label>
+    <textarea id="rdesc" placeholder="e.g. Working at height without harness; scaffold tag expired; declaration not matching site…"></textarea>
+    ${p?'':`<label class="fl">Location / area</label><input id="rloc" placeholder="e.g. Hangar 3 — Bay 12">
+    <label class="fl">Related permit no. (optional)</label><input id="rpermit" placeholder="e.g. PTW-0451">`}
+    <label class="fl">Severity</label>
+    <select id="rsev"><option>Concern — monitor</option><option selected>Unsafe — stop &amp; review</option><option>Imminent danger — stop now</option></select>
+    <label class="fl">Photo evidence</label>
+    <input id="rphoto" type="file" accept="image/*" capture="environment" onchange="grabPhoto(this)">
+    <div id="rthumb"></div>
+    <div class="btn-row" style="margin-top:6px"><button class="b-ghost btn" onclick="${p?'reopen()':"go('dashboard')"}">Cancel</button>
+      <button class="btn b-stop" onclick="submitReport()">Submit to safety officer</button></div></div>`;}
+function grabPhoto(input){const f=input.files&&input.files[0];if(!f)return;
+  readPhoto(f,d=>{draftPhoto=d;const t=document.getElementById('rthumb');
+    if(t)t.innerHTML=d?`<img src="${d}" style="width:100%;max-height:230px;object-fit:cover;border-radius:12px;margin-top:8px">`:'<div class="xs mut">Could not read image.</div>';});}
+function submitReport(){const d=($('#rdesc')?$('#rdesc').value:'').trim();
+  if(!d){alert('Please describe the unsafe condition.');return;}
+  const sev=$('#rsev').value;
+  let p=reportCtx.pid?permits.find(x=>x.id===reportCtx.pid):null;
+  let loc='',pno='';
+  if(!p){loc=($('#rloc')?$('#rloc').value:'').trim();pno=($('#rpermit')?$('#rpermit').value:'').trim();
+    if(pno){const m=permits.find(x=>x.no.toLowerCase()===pno.toLowerCase());if(m)p=m;}}
+  const at=Date.now();
+  const obs={id:'o'+at,by:user.name,role:user.role,at:at,desc:d,severity:sev,photo:draftPhoto||null,
+    location:p?(p.asset||''):loc,permitId:p?p.id:null,permitNo:p?p.no:(pno||null),status:'open',closedBy:null,closedAt:null};
+  observations.push(obs);saveObs();
+  if(p){p.reports.push({by:user.name,role:user.role,at:at,desc:d,severity:sev,photo:draftPhoto||null});
+    p.flagged=true;p.simops='clash';save();}
+  draftPhoto=null;
+  alert('Report submitted to the safety officer.');
+  if(p)reopen();else go('dashboard');}
+
+/* ---- safety inbox: open unsafe reports for HSSE & above ---- */
+function obsDetail(id){state.obsId=id;go('obs');}
+function obsScreen(){const o=observations.find(x=>x.id===state.obsId);if(!o)return go('dashboard');
+  const sevCls=o.severity.indexOf('Imminent')>=0?'c-stop':(o.severity.indexOf('Unsafe')>=0?'c-warn':'c-mut');
+  let h=appbar('Unsafe report',fmt(o.at),{backFn:"go('dashboard')",cls:'red'})+`<div class="body">
+    <div class="card"><div class="row between"><span class="chip ${sevCls}"><span class="d"></span>${esc(o.severity)}</span>
+      <span class="chip ${o.status==='open'?'c-warn':'c-go'}"><span class="d"></span>${o.status==='open'?'Open':'Closed'}</span></div>
+      <div class="sm" style="margin-top:10px;font-weight:600">${esc(o.desc)}</div>
+      <div class="xs mut readout" style="margin-top:8px">${esc(o.by)} · ${esc(o.role)} · ${fmt(o.at)}</div>
+      ${o.location?`<div class="xs mut" style="margin-top:4px">Location: ${esc(o.location)}</div>`:''}
+      ${o.permitNo?`<div class="xs mut" style="margin-top:2px">Permit: ${esc(o.permitNo)}</div>`:''}</div>
+    ${o.photo?`<img src="${o.photo}" style="width:100%;border-radius:14px;margin-bottom:12px">`:'<div class="banner off">No photo attached</div>'}`;
+  if(o.permitId&&permits.find(x=>x.id===o.permitId))h+=`<button class="btn b-blue" style="margin-bottom:10px" onclick="openPermit('${o.permitId}')">Open linked permit →</button>`;
+  if(o.status==='open'){
+    if(isSafety())h+=`<button class="btn b-go" onclick="closeObs('${o.id}')">Acknowledge &amp; close report</button>`;
+    else h+=`<div class="banner gate">Awaiting safety-officer review.</div>`;
+  }else h+=`<div class="banner ok">Closed by ${esc(o.closedBy)} · ${fmt(o.closedAt)}</div>`;
+  return h+`</div>`;}
+function closeObs(id){const o=observations.find(x=>x.id===id);if(!o)return;
+  o.status='closed';o.closedBy=user.name;o.closedAt=Date.now();saveObs();go('dashboard');}
+
+/* ---- revoke (safety officer) ---- */
+function gotoRevoke(){if(!isSafety()){alert('Only HSSE / Area Authority can revoke.');return;}go('revoke');}
+function revokeScreen(){const p=P(),T=TYPES[p.type];
+  return appbar('Revoke permit',p.no+' · '+T.name,{backFn:'reopen()',cls:'red'})+`<div class="body">
+    <div class="card"><div class="row"><svg viewBox="0 0 24 24" style="width:24px;height:24px;flex:none;stroke:var(--red);stroke-width:2;fill:none"><circle cx="12" cy="12" r="9"/><path d="M8 8l8 8M16 8l-8 8"/></svg>
+      <div class="sm">Revoking stops all work under this permit. It cannot be reactivated — a new permit is required.</div></div></div>
+    <label class="fl">Reason for revocation (required)</label>
+    <textarea id="rvreason" placeholder="e.g. Conditions changed; declaration not matching site; safety breach observed…"></textarea>
+    <div class="xs mut" style="margin-bottom:12px">Revoking as <b>${esc(user.name)}</b> · ${esc(user.role)}</div>
+    <div class="btn-row"><button class="b-ghost btn" onclick="reopen()">Cancel</button>
+      <button class="btn b-stop" onclick="submitRevoke()">Confirm revoke</button></div></div>`;}
+function submitRevoke(){const p=P();const r=$('#rvreason').value.trim();
+  if(!r){alert('A reason is required to revoke a permit.');return;}
+  p.status='revoked';p.revokedBy=user.name;p.revokedAt=Date.now();p.revokeReason=r;p.flagged=false;save();reopen();}
+function resolveFlag(){const p=P();if(!confirm('Mark the unsafe condition as resolved?'))return;
+  p.flagged=false;p.simops='clear';p.reports.push({by:user.name,role:user.role,at:Date.now(),desc:'Condition resolved / cleared by safety officer.',severity:'Resolved'});save();reopen();}
+
+/* ---- QR scanner ---- */
+function scannerScreen(){return appbar('Scan site QR','Open the permit or site for this location')+`<div class="body">
+    <div class="card" style="padding:0;overflow:hidden;background:#0c1521">
+      <video id="cam" playsinline style="width:100%;height:260px;object-fit:cover;display:block;background:#0c1521"></video></div>
+    <div id="scanMsg" class="banner off" style="margin-top:0">Point the camera at a site / permit QR placard.</div>
+    <div class="sect">Or enter the code manually</div>
+    <input id="manual" placeholder="e.g. PTW-0451 or Hangar 3 — Bay 12">
+    <button class="btn b-nav" onclick="handleScan(document.getElementById('manual').value)">Find</button>
+  </div>`+tabbar('scan');}
+function startCam(){const v=$('#cam');if(!v)return;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){$('#scanMsg').textContent='Camera not available — use manual entry below.';return;}
+  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(st=>{window._stream=st;v.srcObject=st;v.play();
+    if('BarcodeDetector' in window){const bd=new BarcodeDetector({formats:['qr_code']});
+      const loop=async()=>{if(!window._stream)return;try{const codes=await bd.detect(v);if(codes&&codes.length){handleScan(codes[0].rawValue);return;}}catch(e){}requestAnimationFrame(loop);};
+      requestAnimationFrame(loop);
+    }else{$('#scanMsg').textContent='Live decode not supported on this browser — use manual entry below.';}
+  }).catch(()=>{$('#scanMsg').textContent='Camera blocked — allow access or use manual entry below.';});}
+function stopCam(){if(window._stream){window._stream.getTracks().forEach(t=>t.stop());window._stream=null;}}
+function handleScan(text){text=(text||'').trim();if(!text)return;
+  const byNo=permits.find(p=>p.no.toLowerCase()===text.toLowerCase());
+  if(byNo){openPermit(byNo.id);return;}
+  state.siteCode=text;go('site');}
+function siteScreen(){const code=state.siteCode||'';
+  const matches=permits.filter(p=>(p.asset||'').toLowerCase().includes(code.toLowerCase()));
+  return appbar('Site: '+esc(code),matches.length+' permit(s) here',{back:'scanner'})+`<div class="body">
+    ${matches.length?matches.slice().reverse().map(p=>`<div class="item" onclick="openPermit('${p.id}')"><div class="ic" style="background:${TYPES[p.type].color}">${TYPES[p.type].code}</div>
+      <div style="flex:1"><div class="h2 sm">${TYPES[p.type].name}</div><div class="xs mut readout">${p.no} · ${STAT[p.status][0]}</div></div></div>`).join('')
+      :'<div class="empty"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z"/></svg><div>No permits at this site yet.</div></div>'}
+    <button class="btn b-blue" onclick="newAtSite()">+ New permit at this site</button></div>`;}
+function newAtSite(){pendingAsset=state.siteCode||'';go('picker');}
+function startTimer(){const p=P();if(!p||(p.status!=='issued'&&p.status!=='active'))return;
+  const base=p.issuedAt||Date.now();const tick=()=>{const el=$('#timer');if(!el)return;
+    let ms=base+VALID_H*3600000-Date.now();if(ms<=0){el.textContent='EXPIRED';el.style.color='var(--red)';return;}
+    const h=Math.floor(ms/3600000),m=Math.floor(ms/60000)%60,s=Math.floor(ms/1000)%60;
+    el.textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;};
+  tick();timer=setInterval(tick,1000);}
+function togglePre(i){const p=P();p.prework[i]=!p.prework[i];save();render();}
+function startWork(){const p=P();p.status='active';p.activatedAt=Date.now();
+  p.revalidations.push({by:user.name,role:user.role,at:Date.now(),note:'Initial activation'});save();render();}
+function revalidate(){const p=P();p.revalidations.push({by:user.name,role:user.role,at:Date.now(),note:'Shift revalidation — re-verified safe to continue'});
+  p.issuedAt=Date.now();save();render();}
+function suspend(){const p=P();p.simops='clash';save();render();}
+
+function closeout(){const p=P(),T=TYPES[p.type];const done=p.closeout.filter(Boolean).length,ready=done===CLOSEOUT.length&&p.closeoutSig;
+  return appbar('Close Permit',p.no+' · '+T.name,{back:'permit'})+`<div class="body">
+    <div class="banner ok">● Online — audit trail will sync</div>
+    <div class="sect">Site inspection</div><div class="card" style="padding:6px 14px">
+      ${CLOSEOUT.map((c,i)=>`<div class="ck ${p.closeout[i]?'on':''}" onclick="toggleClose(${i})"><div class="box"></div><div class="t">${c}</div></div>`).join('')}</div>
+    <div class="sect">Closeout signature</div><div class="card"><canvas class="sig" id="csig"></canvas>
+      <div class="btn-row" style="margin-top:10px"><button class="b-ghost btn" onclick="clearCsig()">Clear</button></div></div>
+    <div class="banner ${ready?'ok':'gate'}">${ready?'✓ Ready to close & archive':'⚠ Complete all checks and sign to close'}</div>
+    <button class="btn b-go" ${ready?'':'disabled'} onclick="doClose()">Close permit & archive</button></div>`;}
+function toggleClose(i){const p=P();p.closeout[i]=!p.closeout[i];save();render();}
+function doClose(){const p=P();p.status='closed';p.closedAt=Date.now();save();go('permit');}
+
+function reports(){const by={};Object.keys(TYPES).forEach(t=>by[t]=0);permits.forEach(p=>by[p.type]++);
+  const max=Math.max(1,...Object.values(by));
+  const active=permits.filter(p=>p.status==='active').length,closed=permits.filter(p=>p.status==='closed').length;
+  return appbar('Reports & Records','KPIs · audit · DOSH export')+`<div class="body">
+    <div class="kpis"><div class="kpi blue"><div class="num">${active}</div><div class="c2">Active now</div></div>
+      <div class="kpi"><div class="num">${permits.length}</div><div class="c2">Total permits</div></div>
+      <div class="kpi green"><div class="num">${closed}</div><div class="c2">Closed</div></div>
+      <div class="kpi alert"><div class="num">0</div><div class="c2">Incidents 30d</div></div></div>
+    <div class="card"><div class="sect" style="margin-top:0">Permits by type</div>
+      <div style="display:flex;align-items:flex-end;gap:8px;height:90px">${Object.keys(TYPES).map(t=>`
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;justify-content:flex-end">
+          <div style="width:100%;border-radius:5px 5px 0 0;background:${TYPES[t].color};height:${Math.round(by[t]/max*78)+2}px"></div>
+          <span style="font-size:8.5px;color:var(--muted);font-weight:700">${TYPES[t].code}</span></div>`).join('')}</div></div>
+    <div class="sect">Audit trail (recent)</div>
+    ${permits.slice().reverse().slice(0,6).map(p=>`<div class="item" onclick="openPermit('${p.id}')"><div class="ic" style="background:${TYPES[p.type].color}">${TYPES[p.type].code}</div>
+      <div style="flex:1"><div class="h2 sm">${TYPES[p.type].name}</div><div class="xs mut readout">${p.no} · ${STAT[p.status][0]}</div></div></div>`).join('')||'<div class="empty">No records yet</div>'}
+    <button class="btn b-nav" onclick="alert('In the full build this exports a DOSH-format report. Per-permit PDF export works from each permit.')">Export DOSH report</button>
+  </div>`+tabbar('rep');}
+
+/* signature pads */
+function bindSig(id,onEnd,existing){const cv=$('#'+id);if(!cv)return;const r=cv.getBoundingClientRect();
+  cv.width=r.width*2;cv.height=r.height*2;const c=cv.getContext('2d');c.scale(2,2);c.strokeStyle='#16263A';c.lineWidth=2.4;c.lineCap='round';let dr=false;
+  if(existing){const im=new Image();im.onload=()=>c.drawImage(im,0,0,r.width,r.height);im.src=existing;}
+  const pos=e=>{const b=cv.getBoundingClientRect();const t=e.touches?e.touches[0]:e;return[t.clientX-b.left,t.clientY-b.top];};
+  cv.onmousedown=cv.ontouchstart=e=>{dr=true;const[x,y]=pos(e);c.beginPath();c.moveTo(x,y);e.preventDefault();};
+  cv.onmousemove=cv.ontouchmove=e=>{if(!dr)return;const[x,y]=pos(e);c.lineTo(x,y);c.stroke();e.preventDefault();};
+  cv.onmouseup=cv.onmouseleave=cv.ontouchend=()=>{if(dr){dr=false;onEnd(cv.toDataURL());}};}
+function clearCsig(){const p=P();p.closeoutSig=null;save();render();}
+
+/* ---- PDF: self-contained generator (no print dialog, no pop-up, works offline) ---- */
+function buildLines(p){const T=TYPES[p.type],items=itemsFor(p.type),rb=riskBand(p.risk.score);const L=[];
+  const add=(t,b,s,gap)=>L.push({t:t,b:!!b,s:s||9,gap:gap||0});
+  add('PERMIT TO WORK - '+T.name,true,16,3);
+  add(p.no+'    Status: '+p.status.toUpperCase(),false,9,6);
+  add('Asset / area: '+(p.asset||'-'),false,9);
+  add('Location: '+(p.location?p.location.lat+', '+p.location.lng:'-'),false,9);
+  add('Applicant: '+p.applicant+'     Risk: '+rb[0]+' ('+p.risk.score+')',false,9);
+  add('Controls: '+(p.controls.join(', ')||'-'),false,9);
+  add('Competency / certs: '+(p.competency||'-'),false,9);
+  if(p.type==='CSE'&&p.gas&&p.gas.o2!=='')add('Gas test: O2 '+p.gas.o2+'%  LEL '+p.gas.lel+'%  H2S '+p.gas.h2s+'  CO '+p.gas.co+'   Attendant: '+(p.gas.attendant||'-')+'   Rescue: '+(p.gas.rescue?'yes':'no'),false,9);
+  add('Work: '+(p.desc||'-'),false,9);
+  add('Issued: '+fmt(p.issuedAt)+'    Activated: '+fmt(p.activatedAt)+'    Closed: '+fmt(p.closedAt),false,9,6);
+  add('APPROVALS',true,11,2);
+  Object.entries(p.approvals).forEach(([r,a])=>add('  - '+r+': '+(a?a.by+' ('+fmt(a.at)+')':'-'),false,9));
+  L[L.length-1].gap=6;
+  add('PRE-WORK VERIFICATION',true,11,2);
+  items.forEach((c,i)=>add('  '+(p.prework[i]?'[x] ':'[ ] ')+c[0]+'  ('+c[1]+')',false,9));
+  L[L.length-1].gap=6;
+  if(p.revalidations&&p.revalidations.length){add('REVALIDATION / SHIFT LOG',true,11,2);
+    p.revalidations.forEach(r=>add('  - '+r.note+'  ('+r.by+', '+fmt(r.at)+')',false,9));L[L.length-1].gap=6;}
+  if(p.status==='revoked'){add('REVOKED',true,11,2);add('  By '+p.revokedBy+' on '+fmt(p.revokedAt),false,9);add('  Reason: '+p.revokeReason,false,9,6);}
+  if(p.reports&&p.reports.length){add('UNSAFE-CONDITION LOG',true,11,2);
+    p.reports.forEach(r=>add('  ['+r.severity+'] '+r.desc+(r.photo?'  [photo attached]':'')+'  ('+r.by+', '+fmt(r.at)+')',false,9));L[L.length-1].gap=6;}
+  add('Generated by HSSE e-PTW   audit ID '+p.id,false,8,0);
+  return L;}
+function pdfDoc(lines){
+  const PWp=595,PHp=842,M=50,top=PHp-55,bottom=50;
+  const clean=s=>(s==null?'':String(s)).replace(/[\u2010-\u2015\u2212]/g,'-').replace(/[\u2022\u00B7]/g,'-').replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"').replace(/\u2265/g,'>=').replace(/\u2264/g,'<=').replace(/[^\x20-\x7E]/g,'');
+  const escp=s=>s.replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
+  const wrap=(t,size)=>{const max=Math.max(8,Math.floor((PWp-2*M)/(size*0.5)));const words=t.split(' ');const out=[];let cur='';
+    for(let w of words){const cand=cur?cur+' '+w:w;if(cand.length<=max){cur=cand;}else{if(cur)out.push(cur);while(w.length>max){out.push(w.slice(0,max));w=w.slice(max);}cur=w;}}
+    if(cur!=='')out.push(cur);return out.length?out:[''];};
+  const streams=[];let s='',y=top,used=false;
+  const flush=()=>{if(used)streams.push('BT\n'+s+'ET\n');s='';y=top;used=false;};
+  for(const ln of lines){const size=ln.s,font=ln.b?'F2':'F1';
+    for(const seg of wrap(clean(ln.t),size)){const lh=size+5;if(y-lh<bottom)flush();
+      s+='/'+font+' '+size+' Tf 1 0 0 1 '+M+' '+y+' Tm ('+escp(seg)+') Tj\n';used=true;y-=lh;}
+    if(ln.gap)y-=ln.gap;}
+  flush();if(!streams.length)streams.push('BT\nET\n');
+  const np=streams.length,pageStart=5,contentStart=5+np,parts=[];
+  const kids=[];for(let i=0;i<np;i++)kids.push((pageStart+i)+' 0 R');
+  parts[1]='<< /Type /Catalog /Pages 2 0 R >>';
+  parts[2]='<< /Type /Pages /Kids ['+kids.join(' ')+'] /Count '+np+' >>';
+  parts[3]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+  parts[4]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
+  for(let i=0;i<np;i++)parts[pageStart+i]='<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+PWp+' '+PHp+'] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents '+(contentStart+i)+' 0 R >>';
+  for(let i=0;i<np;i++){const st=streams[i];parts[contentStart+i]='<< /Length '+st.length+' >>\nstream\n'+st+'endstream';}
+  let body='%PDF-1.4\n';const off=[];
+  for(let n=1;n<parts.length;n++){off[n]=body.length;body+=n+' 0 obj\n'+parts[n]+'\nendobj\n';}
+  const xrefPos=body.length;let xref='xref\n0 '+parts.length+'\n0000000000 65535 f \n';
+  for(let n=1;n<parts.length;n++)xref+=String(off[n]).padStart(10,'0')+' 00000 n \n';
+  body+=xref+'trailer\n<< /Size '+parts.length+' /Root 1 0 R >>\nstartxref\n'+xrefPos+'\n%%EOF';
+  return body;}
+function exportPDF(){const p=P();
+  try{const data=pdfDoc(buildLines(p));const bytes=new Uint8Array(data.length);
+    for(let i=0;i<data.length;i++)bytes[i]=data.charCodeAt(i)&0xff;
+    const blob=new Blob([bytes],{type:'application/pdf'});const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=p.no.replace(/[^A-Za-z0-9_-]/g,'_')+'.pdf';
+    document.body.appendChild(a);a.click();
+    setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}a.remove();},2000);
+  }catch(e){alert('Could not generate PDF: '+e.message);}}
+
+/* ===== render ===== */
+function render(){const m={login:loginScreen,dashboard:dashboard,picker:picker,capture:capture,compliance:compliance,approval:approval,permit:permit,closeout:closeout,reports:reports,scanner:scannerScreen,report:reportScreen,revoke:revokeScreen,site:siteScreen,obs:obsScreen};
+  $('#app').innerHTML=(m[state.screen]||dashboard)();
+  if(state.screen==='capture'){const lk=$('#lk'),sv=$('#sv');if(lk)lk.onchange=syncRisk;if(sv)sv.onchange=syncRisk;}
+  if(state.screen==='permit'&&P()&&(P().status==='issued'||P().status==='active'))startTimer();
+  if(state.screen==='scanner')startCam();
+  if(state.screen==='closeout')bindSig('csig',d=>{P().closeoutSig=d;save();render();},P().closeoutSig);
+}
+function seed(){if(permits.length)return;const t='WAH';
+  permits.push({id:'pdemo',no:'PTW-0451',type:t,status:'active',location:{lat:3.1390,lng:101.6869},asset:'Hangar 3 — Bay 12',
+   desc:'Replace lighting on access gantry at 6 m.',applicant:'Faizal A.',risk:{l:4,s:4,score:16},controls:['Area barricaded','PPE issued & worn'],
+   compliance:{passed:true,gaps:[]},approvals:{Supervisor:{by:'R. Tan',at:Date.now()-5400000},'HSSE Officer':{by:'S. Devi',at:Date.now()-4800000},'Area Authority':{by:'Faizal A.',at:Date.now()-4200000}},
+   prework:itemsFor(t).map(()=>true),simops:'clear',issuingSig:null,closeoutSig:null,closeout:CLOSEOUT.map(()=>false),
+   reports:[],flagged:false,revokedBy:null,revokedAt:null,revokeReason:null,
+   competency:'Scaffolder CIDB #1204 (exp 2027); WAH-trained crew · R. Tan',gas:{o2:'',lel:'',h2s:'',co:'',attendant:'',rescue:false},revalidations:[],
+   createdAt:Date.now()-7200000,submittedAt:Date.now()-6000000,issuedAt:Date.now()-4200000,activatedAt:Date.now()-3600000,closedAt:null});save();}
+seed();render();pullSync();
+if('serviceWorker' in navigator && location.protocol!=='file:'){navigator.serviceWorker.register('sw.js').catch(()=>{});}
+</script>
+</body>
+</html>

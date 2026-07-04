@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hsse-ptw-app",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-04",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hsse_ptw_db",
+      "database_id": "fa2f592b-a0ba-4e81-b754-67d189726a89",
+      "migrations_dir": "./migrations"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
