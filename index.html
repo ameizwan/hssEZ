@@ -156,13 +156,38 @@ const CLOSEOUT=["Work complete & area made safe","Equipment / scaffold removed",
 const itemsFor=t=>GENERAL.concat(TYPES[t].spec);
 const VALID_H=8;
 
-/* storage */
-const PKEY='hsse_permits_v3', UKEY='hsse_user_v1';
+/* storage — localStorage is the offline-first cache; Cloudflare D1 (via
+   /api/permits, see functions/api/permits.js) is the shared source of truth
+   across devices when the app is online. Every write saves locally first
+   (instant, offline-safe), then a debounced push syncs the whole set to D1;
+   a pull on load/reconnect merges in anything newer from other devices. */
+const PKEY='hsse_permits_v3', UKEY='hsse_user_v1', API='/api/permits';
 const load=()=>{try{return JSON.parse(localStorage.getItem(PKEY))||[]}catch(e){return[]}};
-const save=()=>{try{localStorage.setItem(PKEY,JSON.stringify(permits))}catch(e){}};
+let syncTimer=null;
+const queueSync=()=>{clearTimeout(syncTimer);syncTimer=setTimeout(pushSync,600);};
+const save=()=>{const cur=P&&P();if(cur)cur.updatedAt=Date.now();try{localStorage.setItem(PKEY,JSON.stringify(permits))}catch(e){}queueSync();};
+async function pushSync(){
+  if(!navigator.onLine)return;
+  try{await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({permits})});}
+  catch(e){/* offline or D1 not deployed yet — stays local, retried on next save/reconnect */}
+}
+async function pullSync(){
+  if(!navigator.onLine)return;
+  try{
+    const r=await fetch(API);if(!r.ok)return;
+    const server=await r.json();if(!Array.isArray(server))return;
+    const byId={};permits.forEach(p=>byId[p.id]=p);
+    server.forEach(sp=>{const lp=byId[sp.id];if(!lp||(sp.updatedAt||0)>(lp.updatedAt||0))byId[sp.id]=sp;});
+    permits=Object.values(byId).sort((a,b)=>a.createdAt-b.createdAt);
+    try{localStorage.setItem(PKEY,JSON.stringify(permits))}catch(e){}
+    if(['dashboard','reports'].includes(state.screen))render();
+  }catch(e){/* D1 not reachable yet — keep working from local cache */}
+}
+window.addEventListener('online',()=>{pushSync();pullSync();});
 let permits=load(), user=null;
 permits.forEach(p=>{if(!p.reports)p.reports=[];if(p.flagged===undefined)p.flagged=false;
-  if(p.revokeReason===undefined){p.revokedBy=null;p.revokedAt=null;p.revokeReason=null;}});
+  if(p.revokeReason===undefined){p.revokedBy=null;p.revokedAt=null;p.revokeReason=null;}
+  if(!p.updatedAt)p.updatedAt=p.createdAt||Date.now();});
 try{user=JSON.parse(localStorage.getItem(UKEY)||'null')}catch(e){}
 let state={screen:user?'dashboard':'login',pid:null};
 let timer=null;
@@ -253,8 +278,8 @@ function pickType(t){const p={id:'p'+Date.now(),no:uid(),type:t,status:'draft',l
   approvals:{Supervisor:null,'HSSE Officer':null,'Area Authority':null},
   prework:itemsFor(t).map(()=>false),simops:'clear',issuingSig:null,closeoutSig:null,closeout:CLOSEOUT.map(()=>false),
   reports:[],flagged:false,revokedBy:null,revokedAt:null,revokeReason:null,
-  createdAt:Date.now(),submittedAt:null,issuedAt:null,activatedAt:null,closedAt:null};
-  pendingAsset='';permits.push(p);save();state.pid=p.id;go('capture');}
+  createdAt:Date.now(),updatedAt:Date.now(),submittedAt:null,issuedAt:null,activatedAt:null,closedAt:null};
+  pendingAsset='';permits.push(p);state.pid=p.id;save();go('capture');}
 
 function capture(){const p=P(),T=TYPES[p.type],rb=riskBand(p.risk.score);
   return appbar('Capture — '+T.name,'Smart data capture',{back:'picker'})
@@ -524,8 +549,9 @@ function seed(){if(permits.length)return;const t='WAH';
    compliance:{passed:true,gaps:[]},approvals:{Supervisor:{by:'R. Tan',at:Date.now()-5400000},'HSSE Officer':{by:'S. Devi',at:Date.now()-4800000},'Area Authority':{by:'Faizal A.',at:Date.now()-4200000}},
    prework:itemsFor(t).map(()=>true),simops:'clear',issuingSig:null,closeoutSig:null,closeout:CLOSEOUT.map(()=>false),
    reports:[],flagged:false,revokedBy:null,revokedAt:null,revokeReason:null,
-   createdAt:Date.now()-7200000,submittedAt:Date.now()-6000000,issuedAt:Date.now()-4200000,activatedAt:Date.now()-3600000,closedAt:null});save();}
+   createdAt:Date.now()-7200000,updatedAt:Date.now()-3600000,submittedAt:Date.now()-6000000,issuedAt:Date.now()-4200000,activatedAt:Date.now()-3600000,closedAt:null});save();}
 seed();render();
+pullSync();
 if('serviceWorker' in navigator && location.protocol!=='file:'){navigator.serviceWorker.register('sw.js').catch(()=>{});}
 </script>
 </body>

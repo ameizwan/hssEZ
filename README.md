@@ -34,8 +34,12 @@ You now have an app icon that opens full-screen, works offline, and saves permit
 | `sw.js` | Service worker → offline caching (the "works with no signal" part) |
 | `manifest.json` | Makes it installable to the home screen |
 | `icon-192/512.png` | App icons |
+| `schema.sql` | Cloudflare D1 (SQLite) table definition |
+| `functions/api/permits.js` | Pages Function — REST API backed by D1 |
+| `functions/api/health.js` | Pages Function — D1 connectivity check |
+| `wrangler.toml` | Cloudflare Pages + D1 binding config |
 
-Data lives in the browser under `localStorage` key `hsse_permits_v1`. A demo permit is seeded on first launch.
+Data lives in the browser under `localStorage` key `hsse_permits_v3`, and — once deployed (see §4) — is also synced to a shared Cloudflare D1 database so multiple devices see the same permits. A demo permit is seeded on first launch.
 
 ---
 
@@ -54,37 +58,34 @@ Data lives in the browser under `localStorage` key `hsse_permits_v1`. A demo per
 
 ---
 
-## 4. Go multi-user — still 100% open source
+## 4. Go multi-user — Cloudflare Pages + D1 (built in)
 
-The single-file app stores data **on one phone**. To share permits across a team, swap `localStorage` for a tiny self-hosted backend. Two open-source options:
+The app now ships with a working multi-device backend: **Cloudflare D1** (Cloudflare's managed SQLite) plus a small **Pages Function** API, deployed together with the static site as one Cloudflare Pages project. No separate server to run.
 
-### Option A — PocketBase (easiest, recommended)
-One Go binary. Auth + database + file storage + REST API + admin UI. Runs on a $5/month VPS.
+**How it works:**
+- `schema.sql` — the D1 table. Each permit is stored as a JSON blob (`data`) plus indexed `id/no/type/status` columns.
+- `functions/api/permits.js` — `GET /api/permits` returns all permits; `POST /api/permits` upserts a batch (last-write-wins by `updatedAt`, checked server-side so a stale device can't clobber a newer edit).
+- `functions/api/health.js` — `GET /api/health` sanity-checks the D1 binding.
+- In `index.html`, `save()` still writes to `localStorage` first (instant, fully offline), then debounces a background push to `/api/permits`. On load and on `online`, the app pulls from D1 and merges anything newer than what's cached locally. If D1 isn't deployed yet, or the phone has no signal, everything just keeps working from `localStorage` — the sync calls fail silently and retry later.
+
+**Deploy it:**
 
 ```bash
-# download the binary for your OS from pocketbase.io, then:
-./pocketbase serve
-# admin UI at http://127.0.0.1:8090/_/  — create a "permits" collection
+npm install -g wrangler        # Cloudflare's CLI
+wrangler login                 # opens a browser to authorize your Cloudflare account
+
+npm run db:create              # creates the D1 database — copy the printed database_id
+# paste that database_id into wrangler.toml ([[d1_databases]] block)
+
+npm run db:migrate:remote       # creates the `permits` table in the live D1 database
+npm run deploy                  # publishes the static app + API as a Cloudflare Pages project
 ```
 
-Suggested `permits` collection fields: `no` (text), `type` (text), `status` (select: draft/active/closed), `asset` (text), `location` (json), `risk` (json), `checks` (json), `signature` (file or text), `applicant` (text), `activatedAt` (date), `closedAt` (date). Turn on the built-in **users** collection for login, and set **API rules** so a worker sees only their site's permits (that's your role-based access).
+`wrangler pages deploy` prints your live `https://hsse-eptw.pages.dev` URL — open that on your phone and **Add to Home Screen** as before. Every device that installs it now reads/writes the same D1 database.
 
-Then replace the storage functions in `index.html`:
+For local development with a local D1 copy: `npm run db:migrate:local` then `npm run dev` (serves the app + functions at `http://localhost:8788`).
 
-```js
-const API = 'https://your-server/api/collections/permits/records';
-const token = localStorage.getItem('pb_token'); // from the login call
-const headers = { 'Content-Type':'application/json', 'Authorization': token };
-
-async function load(){ const r = await fetch(API, {headers}); return (await r.json()).items; }
-async function create(p){ await fetch(API, {method:'POST', headers, body:JSON.stringify(p)}); }
-async function update(id,p){ await fetch(`${API}/${id}`, {method:'PATCH', headers, body:JSON.stringify(p)}); }
-```
-
-Keep `localStorage` as the **offline queue**: write locally first, then POST to PocketBase when `navigator.onLine` — that's your offline-sync.
-
-### Option B — Supabase
-Open-source Postgres + row-level security if you prefer SQL and want dashboards/SQL reporting. Same idea: a `permits` table, RLS policies per role, and the JS client (`@supabase/supabase-js`) instead of `fetch`.
+**Known limitation:** the API has no authentication yet — anyone who can reach the deployed URL can read/write permits (matching the app's current client-side-only role picker, which is also not real auth). Before using this for anything beyond a pilot, put the Pages project behind **Cloudflare Access** (Zero Trust) or add a shared API key checked in the Pages Functions, and revisit the role-based access rules mentioned above.
 
 ---
 

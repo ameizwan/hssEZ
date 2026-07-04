@@ -1,0 +1,15 @@
+{
+  "name": "hsse-eptw",
+  "private": true,
+  "description": "HSSE e-PTW — static PWA + Cloudflare Pages Functions API backed by D1",
+  "scripts": {
+    "dev": "wrangler pages dev . --d1=DB=hsse-eptw-db",
+    "db:create": "wrangler d1 create hsse-eptw-db",
+    "db:migrate:local": "wrangler d1 execute hsse-eptw-db --local --file=./schema.sql",
+    "db:migrate:remote": "wrangler d1 execute hsse-eptw-db --remote --file=./schema.sql",
+    "deploy": "wrangler pages deploy . --project-name=hsse-eptw"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}

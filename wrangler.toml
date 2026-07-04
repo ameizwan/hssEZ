@@ -1,0 +1,10 @@
+name = "hsse-eptw"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "."
+
+# Created with: wrangler d1 create hsse-eptw-db
+# Then paste the returned database_id below.
+[[d1_databases]]
+binding = "DB"
+database_name = "hsse-eptw-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
